@@ -1,2 +1,2 @@
 # PleaseUndo
-Rollback netwokring sdk build on top of Enet
+Rollback networking library build on top of Enet written in c99.
