@@ -13,12 +13,19 @@
 #define INPUT_DELAY 1 // Should always be above 0
 #define INITIAL_FRAME 0 //Specifies the initial frame the game starts in. Cannot rollback before this frame
 #define DEFAULT_HOST_PORT 12344 // Default port for when the host creates a game
-//Declaration Structs
+//Declaration Structs and enums
+typedef enum PU_PLAYER_TYPE{
+  PLAYER_HOST = 1,
+  PLAYER_CLIENT = 2,
+  PLAYER_SPECTATOR = 3
+}PU_PLAYER_TYPE;
+
 typedef struct PU_SESSION{
   int local_frame;// Tracks the latest update frame.
   int remote_frame;// Tracks the latest frame received from the remote client
   int sync_frame;// Tracks the last frame where we synchronized the game state with the remote client. Never rollback before this frame
   int remote_frame_advantage; // Latest frame advantage received from the remote client
+  PU_PLAYER_TYPE local_player_type;
 }PU_SESSION;
 //Declaration Funcs
 //Please Undo Session Functions
@@ -27,14 +34,14 @@ void pu_determine_sync_frame(PU_SESSION *session);// X*X*
 int pu_rollback_condition(PU_SESSION *session); // No need to rollback if we don't have a frame after the previous sync frame to synchronize to
 int pu_timesynced_condition(PU_SESSION *session);// Function for syncing both players making the other wait
 //Network Related Functions
-void pu_update_network(ENetHost *player);// X*X*
+void pu_update_network(ENetHost *player, PU_SESSION *session);// X*X*
 int pu_check_error(int num);// Basic error checking function
 void pu_print_debug(const char *message);// Print function that only sends messages when SHOW_DEBUG is enabled(1)
 int pu_initialize(PU_SESSION *session); // Init Please Undo and Enet
 void pu_deinitialize(); // De Init Please Undo
-ENetHost* pu_create_host(int port);// Create Host
+ENetHost* pu_host_create(int port, PU_SESSION *session);// Create Host
 void pu_host_destroy(ENetHost *host);// Destroy Host
-ENetHost* pu_client_create();// Create Client
+ENetHost* pu_client_create(PU_SESSION *session);// Create Client
 void pu_client_destroy(ENetHost *client);// Destroy Client
 //Save State Related Functions
 void pu_save_state_callback(void (*func)(int), int frame_num);// callback to a save state function which takes a parameter to the current frame
@@ -42,6 +49,9 @@ void pu_restore_state_callback(void (*func)(int), int frame_num);// callback to 
 //-----------------------------------------------------------------------------
 // Implementation
 #ifdef PLEASE_UNDO_IMPL_H
+void pu_update_network(ENetHost *player, PU_SESSION *session){
+
+}
 void pu_determine_sync_frame(PU_SESSION *session){
   int final_frame = session->remote_frame; // We will only check inputs until the remote_frame, since we don't have inputs after.
   if (session->remote_frame > session->local_frame) {
@@ -115,7 +125,7 @@ void pu_deinitialize(){
   pu_print_debug("Closed Enet\n");
 }
 // Create Host
-ENetHost* pu_host_create(int port){
+ENetHost* pu_host_create(int port, PU_SESSION *session){
   ENetAddress address = {0};
   address.host = ENET_HOST_ANY;
   address.port = DEFAULT_HOST_PORT;
@@ -125,6 +135,7 @@ ENetHost* pu_host_create(int port){
     return host;
   }else{
     pu_print_debug("Host created successfully\n");
+    session->local_player_type = PLAYER_HOST;
     return host;
   }
 }
@@ -134,13 +145,14 @@ void pu_host_destroy(ENetHost *host){
   pu_print_debug("Host destroyed\n");
 }
 // Create Client
-ENetHost* pu_client_create(){
+ENetHost* pu_client_create(PU_SESSION *session){
   ENetHost* client = enet_host_create(NULL,1,1,0,0);
   if (client == NULL) {
     pu_print_debug("An error occurred while creating a client\n");
     return client;
   }else{
     pu_print_debug("Client created successfully\n");
+    session->local_player_type = PLAYER_CLIENT;
     return client;
   }
 }
