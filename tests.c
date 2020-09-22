@@ -4,7 +4,6 @@
 
 int main(int argc, char const *argv[]) {
   PU_SESSION session;
-  PU_PLAYER_TYPE player_type = PLAYER_CLIENT;
 
   pu_initialize(&session);
   ENetHost* client = pu_client_create(&session);
