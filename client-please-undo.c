@@ -2,7 +2,7 @@
 #include "include/please_undo.h"
 #include <stdio.h>
 
-int main(int argc, char const *argv[]) {
+int main(void) {
   PU_SESSION session;
   ENetHost* client;
   pu_initialize();
