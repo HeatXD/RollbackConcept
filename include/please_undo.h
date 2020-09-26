@@ -13,6 +13,8 @@
 #define INPUT_DELAY 1 // Should always be above 0
 #define INITIAL_FRAME 0 //Specifies the initial frame the game starts in. Cannot rollback before this frame
 #define DEFAULT_HOST_PORT 12344 // Default port for when the host creates a game
+#define MAX_PLAYERS 3 //host it self and 3 peers
+#define ENET_CHANNELS 2// 1 for gameplay and 2 for text messages
 //Declaration Structs and enums
 typedef enum PU_PLAYER_TYPE{
   PLAYER_HOST = 1,
@@ -26,6 +28,7 @@ typedef struct PU_SESSION{
   int sync_frame;// Tracks the last frame where we synchronized the game state with the remote client. Never rollback before this frame
   int remote_frame_advantage; // Latest frame advantage received from the remote client
   PU_PLAYER_TYPE local_player_type;
+  ENetPeer host_peer_data;
 }PU_SESSION;
 //Declaration Funcs
 //Please Undo Session Functions
@@ -34,6 +37,8 @@ void pu_determine_sync_frame(PU_SESSION *session);// X*X*
 int pu_rollback_condition(PU_SESSION *session); // No need to rollback if we don't have a frame after the previous sync frame to synchronize to
 int pu_timesynced_condition(PU_SESSION *session);// Function for syncing both players making the other wait
 //Network Related Functions
+int pu_disconnect_from_host(PU_SESSION *session, ENetHost *client); // disconnect from the player hosting the game
+int pu_connect_to_host(EnetHost *client, PU_SESSION *session, const char* ip); // connect a peer to the host
 void pu_update_network(ENetHost *player, PU_SESSION *session);// X*X*
 int pu_check_error(int num);// Basic error checking function
 void pu_print_debug(const char *message);// Print function that only sends messages when SHOW_DEBUG is enabled(1)
@@ -50,7 +55,78 @@ void pu_restore_state_callback(void (*func)(int), int frame_num);// callback to 
 // Implementation
 #ifdef PLEASE_UNDO_IMPL_H
 void pu_update_network(ENetHost *player, PU_SESSION *session){
-
+  ENetEvent event;
+  switch (session->local_player_type) {
+    case PLAYER_HOST:
+      switch (event.type) {
+        case ENET_EVENT_TYPE_CONNECT:
+          printf("A new client connected from %x:%u.\n", event.peer->address.host, event.peer->address.port);
+          char data_str[30];
+          sprintf(data_str,"%x:%u", event.peer->address.host, event.peer->address.port);
+          event.peer->data = data_str;
+          break;
+        case ENET_EVENT_TYPE_DISCONNECT:
+          printf("%s disconnected!\n", event.peer->data);
+          event.peer->data = NULL;
+          break;
+      }
+      break;
+    case PLAYER_CLIENT:
+      switch (event.type) {
+        case ENET_EVENT_TYPE_RECEIVE:
+          pu_print_debug("still has to be implemented but recieved stuff from the host\n");
+          break;
+      }
+      break;
+    case PLAYER_SPECTATOR:
+      pu_print_debug("still has to be implemented\n");
+      break;
+    default:
+      pu_print_debug("no networking for this playetype found!\n");
+      break;
+  }
+}
+int pu_disconnect_from_host(PU_SESSION *session, ENetHost *client){
+  ENetEvent event;
+  if (session->host_peer_data == NULL) {
+    pu_print_debug("No host data found!\n");
+    return 0;
+  }
+  enet_peer_disconnect(session->host_peer_data, 0);
+  while (enet_host_service(client, &event, 3000) > 0) {
+    switch (event.type) {
+      case ENET_EVENT_TYPE_RECEIVE:
+        enet_packet_destroy(event.packet);
+        break;
+      case ENET_EVENT_TYPE_DISCONNECT:
+        pu_print_debug("Successfully disconnected!\n");
+        break;
+    }
+  }
+  return 1;
+}
+int pu_connect_to_host(EnetHost *client, PU_SESSION *session, const char* ip){
+  ENetAddress address;
+  EnetEvent event;
+  EnetPeer *host;
+  enet_address_set_host(&address, ip);
+  address.port = DEFAULT_HOST_PORT;
+  host = enet_host_connect(client, &address, ENET_CHANNELS, 0);
+  if (host == NULL) {
+    pu_print_debug("No available hosts to create a connection with!\n");
+    session->host_peer_data = NULL;
+    return 0;
+  }
+  if (enet_host_service(client, &event, 5000) > 0 && event.type == ENET_EVENT_TYPE_CONNECT){
+    pu_print_debug("Connection to host successful\n");
+    session->host_peer_data = host;
+    return 1;
+  }else{
+    enet_peer_reset(host);
+    pu_print_debug("Connection to host failed\n");
+    session->host_peer_data = NULL;
+    return 0;
+  }
 }
 void pu_determine_sync_frame(PU_SESSION *session){
   int final_frame = session->remote_frame; // We will only check inputs until the remote_frame, since we don't have inputs after.
@@ -110,6 +186,7 @@ int pu_initialize(PU_SESSION *session){
   session->remote_frame = INITIAL_FRAME;
   session->sync_frame = INITIAL_FRAME;
   session->remote_frame_advantage = 0;
+  session->host_peer_data = NULL;
   pu_print_debug("Initialized PU session\n");
   if (!pu_check_error(enet_initialize())){
     pu_print_debug("Enet initialized\n");
@@ -122,14 +199,14 @@ int pu_initialize(PU_SESSION *session){
 // De-Init Enet
 void pu_deinitialize(){
   enet_deinitialize();
-  pu_print_debug("Closed Enet\n");
+  pu_print_debug("Closed PLease undo and Enet\n");
 }
 // Create Host
 ENetHost* pu_host_create(int port, PU_SESSION *session){
   ENetAddress address = {0};
   address.host = ENET_HOST_ANY;
   address.port = DEFAULT_HOST_PORT;
-  ENetHost *host = enet_host_create(&address,1,1,0,0);
+  ENetHost *host = enet_host_create(&address, MAX_PLAYERS, ENET_CHANNELS, 0, 0);
   if (host == NULL) {
     pu_print_debug("An error occurred while creating a host\n");
     return host;
@@ -146,7 +223,7 @@ void pu_host_destroy(ENetHost *host){
 }
 // Create Client
 ENetHost* pu_client_create(PU_SESSION *session){
-  ENetHost* client = enet_host_create(NULL,1,1,0,0);
+  ENetHost* client = enet_host_create(NULL,1,ENET_CHANNELS,0,0);
   if (client == NULL) {
     pu_print_debug("An error occurred while creating a client\n");
     return client;
