@@ -23,12 +23,18 @@ typedef enum PU_PLAYER_TYPE{
 }PU_PLAYER_TYPE;
 
 typedef struct PU_SESSION{
+  int local_frame;// Tracks the latest update frame.
+  int remote_frame;// Tracks the latest frame received from the remote client
+  int sync_frame;// Tracks the last frame where we synchronized the game state with the remote client. Never rollback before this frame
+  int remote_frame_advantage;// Latest frame advantage received from the remote client
+  //----------------------------------------------------------------------------
   PU_PLAYER_TYPE local_player_type;
   ENetHost* local_player_host;
   ENetEvent local_client_event;
   ENetPeer* host_peer;
 }PU_SESSION;
-//Declaration Funcs
+// Declaration Funcs
+// Network Functions
 void pu_disconnect_from_host(PU_SESSION *session, ENetHost* client);
 void pu_destroy_client(ENetHost* client);
 int pu_connect_to_host(ENetHost* client, PU_SESSION *session, char* ip_address);
@@ -36,12 +42,35 @@ ENetHost* pu_create_client(PU_SESSION *session);
 void pu_update_network(PU_SESSION *session, ENetHost* player);
 ENetHost* pu_create_host(PU_SESSION *session);
 void pu_deinitialize();
-int pu_initialize();
+int pu_initialize(PU_SESSION *session);
 void pu_log(const char* message);
 void pu_destroy_host(ENetHost* host, PU_SESSION *session);
+// Please Undo Functions
+int pu_rollback_condition(PU_SESSION *session); // No need to rollback if we don't have a frame after the previous sync frame to synchronize to
+int pu_timesynced_condition(PU_SESSION *session);// Function for syncing both players making the other wait
 //-----------------------------------------------------------------------------
 // Implementation
 #ifdef PLEASE_UNDO_IMPL_H
+// Please undo functions
+// Function for syncing both players making the other wait
+int pu_timesynced_condition(PU_SESSION *session){
+  int local_frame_advantage = session->local_frame - session->remote_frame;  // How far the client is ahead of the last reported frame by the remote client
+  int frame_advantage_difference = local_frame_advantage - session->remote_frame_advantage;// How different is the frame advantage reported by the remote client and this one
+  if (local_frame_advantage < MAX_ROLLBACK_FRAMES && frame_advantage_difference <= FRAME_ADVANTAGE_LIMIT) {// Only allow the local client to get so far ahead of remote
+    return 1;
+  }else{
+    return 0;
+  }
+}
+// No need to rollback if we don't have a frame after the previous sync frame to synchronize to
+int pu_rollback_condition(PU_SESSION *session){
+  if (session->local_frame > session->sync_frame && session->remote_frame > session->sync_frame) {
+    return 1;
+  } else {
+    return 0;
+  }
+}
+// Network functions
 void pu_update_network(PU_SESSION *session, ENetHost* player){
   ENetEvent event;
   switch (session->local_player_type) {
@@ -146,7 +175,11 @@ void pu_log(const char* message){
     fprintf (stderr, message);
   }
 }
-int pu_initialize(){
+int pu_initialize(PU_SESSION *session){
+  session->local_frame = INITIAL_FRAME;
+  session->remote_frame = INITIAL_FRAME;
+  session->sync_frame = INITIAL_FRAME;
+  session->remote_frame_advantage = 0;
   if (enet_initialize() != 0) {
     pu_log("An error occurred while initializing ENet.\n");
     return EXIT_FAILURE;

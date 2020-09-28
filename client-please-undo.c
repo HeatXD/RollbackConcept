@@ -5,7 +5,7 @@
 int main(void) {
   PU_SESSION session;
   ENetHost* client;
-  pu_initialize();
+  pu_initialize(&session);
   client = pu_create_client(&session);
   int result = pu_connect_to_host(client, &session, "127.0.0.1");
   int count = 0;

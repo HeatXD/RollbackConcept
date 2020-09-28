@@ -4,7 +4,7 @@
 
 int main(void) {
   PU_SESSION session;
-  pu_initialize();
+  pu_initialize(&session);
   ENetHost* host = pu_create_host(&session);
   while (true) {
     pu_update_network(&session, host);
