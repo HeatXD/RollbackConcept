@@ -46,12 +46,31 @@ int pu_initialize(PU_SESSION *session);
 void pu_log(const char* message);
 void pu_destroy_host(ENetHost* host, PU_SESSION *session);
 // Please Undo Functions
+int pu_run(PU_SESSION *session);// X*X*
+void pu_determine_sync_frame(PU_SESSION *session);// X*X*
 int pu_rollback_condition(PU_SESSION *session); // No need to rollback if we don't have a frame after the previous sync frame to synchronize to
 int pu_timesynced_condition(PU_SESSION *session);// Function for syncing both players making the other wait
 //-----------------------------------------------------------------------------
 // Implementation
 #ifdef PLEASE_UNDO_IMPL_H
 // Please undo functions
+// Main Please Undo loop X*X*
+int pu_run(PU_SESSION *session){
+  return 0;
+}
+// X*X*
+void pu_determine_sync_frame(PU_SESSION *session){
+  int final_frame = session->remote_frame; // We will only check inputs until the remote_frame, since we don't have inputs after.
+  if (session->remote_frame > session->local_frame) {
+    final_frame = session->remote_frame;  //Incase the remote client is ahead of local, don't check past the local frame.
+  }
+  //select frames from (sync_frame + 1) through final_frame and find the first frame where predicted and remote inputs don't match TODO
+  //if (found_frame) {
+  //  session->sync_frame = found_frame -1;  //The found frame is the first frame where inputs don't match, so assume the previous frame is synchronized
+  //}else{
+  //  session->sync_frame = final_frame; // All remote inputs matched the predicted inputs since the last synchronized frame
+  //}
+}
 // Function for syncing both players making the other wait
 int pu_timesynced_condition(PU_SESSION *session){
   int local_frame_advantage = session->local_frame - session->remote_frame;  // How far the client is ahead of the last reported frame by the remote client
