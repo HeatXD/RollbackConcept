@@ -33,7 +33,6 @@ typedef struct PU_SESSION{
   ENetPeer* host_peer;
 }PU_SESSION;
 typedef struct PU_SESSION_CALLBACKS{
-  
 }PU_SESSION_CALLBACKS;
 // Declaration Funcs
 // Network Functions
