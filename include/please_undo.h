@@ -21,7 +21,6 @@ typedef enum PU_PLAYER_TYPE{
   PLAYER_CLIENT = 2,
   PLAYER_SPECTATOR = 3
 }PU_PLAYER_TYPE;
-
 typedef struct PU_SESSION{
   int local_frame;// Tracks the latest update frame.
   int remote_frame;// Tracks the latest frame received from the remote client
@@ -33,6 +32,9 @@ typedef struct PU_SESSION{
   ENetEvent local_client_event;
   ENetPeer* host_peer;
 }PU_SESSION;
+typedef struct PU_SESSION_CALLBACKS{
+  
+}PU_SESSION_CALLBACKS;
 // Declaration Funcs
 // Network Functions
 void pu_disconnect_from_host(PU_SESSION *session, ENetHost* client);
