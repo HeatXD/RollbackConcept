@@ -62,6 +62,7 @@ int pu_run(PU_SESSION *session){
 // X*X*
 void pu_determine_sync_frame(PU_SESSION *session){
   int final_frame = session->remote_frame; // We will only check inputs until the remote_frame, since we don't have inputs after.
+
   if (session->remote_frame > session->local_frame) {
     final_frame = session->remote_frame;  //Incase the remote client is ahead of local, don't check past the local frame.
   }
@@ -76,6 +77,7 @@ void pu_determine_sync_frame(PU_SESSION *session){
 int pu_timesynced_condition(PU_SESSION *session){
   int local_frame_advantage = session->local_frame - session->remote_frame;  // How far the client is ahead of the last reported frame by the remote client
   int frame_advantage_difference = local_frame_advantage - session->remote_frame_advantage;// How different is the frame advantage reported by the remote client and this one
+
   if (local_frame_advantage < MAX_ROLLBACK_FRAMES && frame_advantage_difference <= FRAME_ADVANTAGE_LIMIT) {// Only allow the local client to get so far ahead of remote
     return 1;
   }else{
@@ -93,6 +95,7 @@ int pu_rollback_condition(PU_SESSION *session){
 // Network functions
 void pu_update_network(PU_SESSION *session, ENetHost* player){
   ENetEvent event;
+
   switch (session->local_player_type) {
     case PLAYER_HOST:
       while (enet_host_service(player, &event, 0) > 0) {
@@ -123,10 +126,12 @@ void pu_update_network(PU_SESSION *session, ENetHost* player){
       break;
   }
 }
+//cleanup enethost client
 void pu_destroy_client(ENetHost* client){
   enet_host_destroy(client);
   pu_log("Client destroyed!\n");
 }
+// disconnect client from host
 void pu_disconnect_from_host(PU_SESSION *session, ENetHost* client){
   enet_peer_disconnect(session->host_peer, 0);
   while (enet_host_service(client, &session->local_client_event, 3000) > 0) {
@@ -140,11 +145,13 @@ void pu_disconnect_from_host(PU_SESSION *session, ENetHost* client){
     }
   }
 }
+// connect client to host
 int pu_connect_to_host(ENetHost* client, PU_SESSION *session, char* ip_address){
   ENetAddress address = {0};
   enet_address_set_host(&address, ip_address);
   address.port = DEFAULT_PORT;
   session->host_peer = enet_host_connect(client, &address, ENET_CHANNELS, 0);
+
   if (session->host_peer == NULL) {
     pu_log("No available peers for initiating an ENet connection!\n");
     return 0;
@@ -158,10 +165,12 @@ int pu_connect_to_host(ENetHost* client, PU_SESSION *session, char* ip_address){
     return 0;
   }
 }
+// create a client
 ENetHost* pu_create_client(PU_SESSION *session){
   ENetHost* client;
   session->local_player_type = PLAYER_CLIENT;
   client = enet_host_create(NULL, 1, ENET_CHANNELS, 0, 0);
+
   if (client == NULL) {
     pu_log("An error occurred while trying to create an ENet client!\n");
     return client;
@@ -169,11 +178,13 @@ ENetHost* pu_create_client(PU_SESSION *session){
   pu_log("Client created!\n");
   return client;
 }
+// cleanup enethost host
 void pu_destroy_host(ENetHost* host, PU_SESSION *session){
   session->local_player_host = NULL;
   enet_host_destroy(host);
   pu_log("Host destroyed!\n");
 }
+// create host
 ENetHost* pu_create_host(PU_SESSION *session){
   ENetEvent event;
   ENetHost* host;
@@ -181,6 +192,7 @@ ENetHost* pu_create_host(PU_SESSION *session){
   address.host = ENET_HOST_ANY;
   address.port = DEFAULT_PORT;
   host = enet_host_create(&address, MAX_PEERS, ENET_CHANNELS, 0, 0);
+
   if (host == NULL) {
     pu_log("An error occurred while trying to create an ENet server host.\n");
     return host;
@@ -190,23 +202,28 @@ ENetHost* pu_create_host(PU_SESSION *session){
   pu_log("Host created!\n");
   return host;
 }
+// simple logging function
 void pu_log(const char* message){
   if (SHOW_DEBUG) {
-    fprintf (stderr, message);
+    fprintf(stderr, message);
   }
 }
+// initialize Please undo session and ENet
 int pu_initialize(PU_SESSION *session){
   session->local_frame = INITIAL_FRAME;
   session->remote_frame = INITIAL_FRAME;
   session->sync_frame = INITIAL_FRAME;
   session->remote_frame_advantage = 0;
+
   if (enet_initialize() != 0) {
     pu_log("An error occurred while initializing ENet.\n");
-    return EXIT_FAILURE;
+    return 1;
   }
   atexit(pu_deinitialize);
   pu_log("Initialized Enet and Please Undo.\n");
+  return 0;
 }
+// Deinitialized Please undo and ENet
 void pu_deinitialize(){
   enet_deinitialize();
   pu_log("Enet and Please Undo deinitialized.\n");
