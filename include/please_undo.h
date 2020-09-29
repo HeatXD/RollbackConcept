@@ -89,7 +89,7 @@ void pu_send_input(PU_SESSION *session, ENetHost *player, const void *input, int
   data.frame_num = session->local_frame;
   data.input = input;
 
-  ENetPacket* packet = enet_packet_create(&data, (sizeof(data)-sizeof(data.input)) + input_size, 0);
+  ENetPacket* packet = enet_packet_create(&data, (sizeof(data)-sizeof(data.input)) + input_size, ENET_PACKET_FLAG_RELIABLE);
 
   if (session->local_player_type == PLAYER_HOST) {
     enet_host_broadcast(player, 0, packet);
