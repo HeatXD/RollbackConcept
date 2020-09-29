@@ -52,8 +52,9 @@ void pu_deinitialize();
 int pu_initialize(PU_SESSION *session);
 void pu_log(const char* message);
 void pu_destroy_host(ENetHost* host, PU_SESSION *session);
+void pu_send_input(PU_SESSION *session, ENetHost *player, const void *input);//X*X*
 // Please Undo Functions
-int pu_run(PU_SESSION *session);// X*X*
+int pu_run(PU_SESSION *session, PU_SESSION_CALLBACKS *cb, ENetHost* player);// X*X*
 void pu_handle_rollbacks(PU_SESSION *session, PU_SESSION_CALLBACKS *cb);// X*X*
 void pu_determine_sync_frame(PU_SESSION *session);// X*X*
 int pu_rollback_condition(PU_SESSION *session); // No need to rollback if we don't have a frame after the previous sync frame to synchronize to
@@ -65,12 +66,30 @@ int pu_timesynced_condition(PU_SESSION *session);// Function for syncing both pl
 // Main Please Undo loop X*X*
 int pu_run(PU_SESSION *session, PU_SESSION_CALLBACKS *cb, ENetHost* player){
   pu_update_network(session, player);
-  pu_handle_rollbacks(session, cb);
+  //pu_handle_rollbacks(session, cb);
+  if (pu_timesynced_condition(session)){
+    session->local_frame++;
+    pu_log("Normal Update");
+    pu_send_input(session, player, "TestData");
+  }
   return 0;
 }
 // X*X*
+void pu_send_input(PU_SESSION *session, ENetHost *player, const void *input){
+  char num  = session->local_frame + '0';
+  ENetPacket* packet = enet_packet_create(num, strlen(num) + 1);
+  if (session->local_player_type == PLAYER_HOST) {
+    enet_host_broadcast(player, 0, packet);
+  }else{
+    enet_peer_send(session->host_peer,0, packet);
+  }
+}
+// X*X*
 void pu_handle_rollbacks(PU_SESSION *session, PU_SESSION_CALLBACKS *cb){
-
+  pu_determine_sync_frame(session);
+  if (pu_timesynced_condition(session)) {
+    cb->restore_game_state(0);
+  }
 }
 // X*X*
 void pu_determine_sync_frame(PU_SESSION *session){
@@ -117,8 +136,17 @@ void pu_update_network(PU_SESSION *session, ENetHost* player){
             printf("A new client connected from %x:%u.\n", event.peer->address.host, event.peer->address.port);
             break;
           case ENET_EVENT_TYPE_DISCONNECT:
-            printf ("%s disconnected.\n", event.peer -> data);
+            printf ("%s disconnected.\n", event.peer->data);
             event.peer->data = NULL;
+            break;
+          case ENET_EVENT_TYPE_RECEIVE:
+            printf ("A packet of length %u containing %s was received from %x:%u on channel %u.\n",
+            event.packet->dataLength,
+            event.packet->data,
+            event.peer->address.host,
+            event.peer->address.port,
+            event.channelID);
+            enet_packet_destroy(event.packet);
             break;
         }
       }
@@ -133,6 +161,7 @@ void pu_update_network(PU_SESSION *session, ENetHost* player){
             session->local_client_event.peer->address.host,
             session->local_client_event.peer->address.port,
             session->local_client_event.channelID);
+            enet_packet_destroy(session->local_client_event.packet);
             break;
         }
       }
