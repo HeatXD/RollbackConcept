@@ -8,10 +8,10 @@ int main(void) {
   pu_initialize(&session);
   int dt = 16667;
   ENetHost* host = pu_create_host(&session);
-  while (true) {
+  do {
     pu_run(&session, &cb, host);
     usleep(dt);
-  }
+  } while(true);
   pu_destroy_host(host, &session);
   return 0;
 }

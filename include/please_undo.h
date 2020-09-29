@@ -5,8 +5,9 @@
 #define ENET_IMPLEMENTATION
 #include "enet.h"
 #include <stdio.h>
+#include <stdbool.h>
 //PLEASE_UNDO DEBUG
-#define SHOW_DEBUG 1 // Show Debug messages
+#define SHOW_DEBUG false // Show Debug messages
 //Declaration Constants
 #define MAX_ROLLBACK_FRAMES 10 // Specifies the maximum number of frames that can be resimulated
 #define FRAME_ADVANTAGE_LIMIT 3 // Only allow the local client to get so far ahead of remote
@@ -38,6 +39,7 @@ typedef struct PU_SESSION{
   ENetEvent local_client_event;
   ENetPeer* host_peer;
   //----------------------------------------------------------------------------
+  bool has_started;
 }PU_SESSION;
 
 typedef void (*PU_SESSION_CALLBACK)(int frame_num);
@@ -72,12 +74,13 @@ int pu_timesynced_condition(PU_SESSION *session);// Function for syncing both pl
 // Main Please Undo loop X*X*
 int pu_run(PU_SESSION *session, PU_SESSION_CALLBACKS *cb, ENetHost* player){
   pu_update_network(session, player);
-  //pu_handle_rollbacks(session, cb);
-  if (pu_timesynced_condition(session)){
-    session->local_frame++;
-    printf("Current FRAME: %d\n",session->local_frame);
-    char input[20] = "testdata123";
-    pu_send_input(session, player, input, strlen(input)+1);
+  if (session->has_started){
+    //pu_handle_rollbacks(session, cb);
+    if (pu_timesynced_condition(session)){
+      session->local_frame++;
+      printf("CURRENT FRAME: %d - REMOTE FRAME: %d - REMOTE FRAME ADVANTAGE: %d\n", session->local_frame, session->remote_frame, session->remote_frame_advantage);
+      pu_send_input(session, player, (int*)session->local_frame, sizeof(session->local_frame));
+    }
   }
   return 0;
 }
@@ -90,9 +93,9 @@ void pu_send_input(PU_SESSION *session, ENetHost *player, const void *input, int
   ENetPacket* packet = enet_packet_create(&data, (sizeof(data)-sizeof(data.input)) + input_size, 0);
 
   if (session->local_player_type == PLAYER_HOST) {
-    enet_host_broadcast(player, 1, packet);
+    enet_host_broadcast(player, 0, packet);
   }else{
-    enet_peer_send(session->host_peer, 1, packet);
+    enet_peer_send(session->host_peer, 0, packet);
   }
 }
 // X*X*
@@ -137,6 +140,8 @@ int pu_rollback_condition(PU_SESSION *session){
 }
 // Network functions
 void pu_update_network(PU_SESSION *session, ENetHost* player){
+  session->remote_frame_advantage = (session->local_frame - session->remote_frame);
+
   ENetEvent event;
 
   switch (session->local_player_type) {
@@ -144,22 +149,26 @@ void pu_update_network(PU_SESSION *session, ENetHost* player){
       while (enet_host_service(player, &event, 0) > 0) {
         switch (event.type) {
           case ENET_EVENT_TYPE_CONNECT:
-            printf("A new client connected from %s:%u.\n", event.peer->address.host, event.peer->address.port);
-            if (session->local_frame > FRAME_ADVANTAGE_LIMIT) {
-              pu_send_input(session, player, session->local_frame, sizeof(session->local_frame));
+            if (SHOW_DEBUG) {
+              printf("A new client connected from %s:%u.\n", event.peer->address.host, event.peer->address.port);
             }
+            session->has_started = true;
             break;
           case ENET_EVENT_TYPE_DISCONNECT:
-            printf ("%s disconnected.\n", event.peer->data);
+            if (SHOW_DEBUG) {
+              printf ("%s disconnected.\n", event.peer->data);
+            }
             event.peer->data = NULL;
             break;
           case ENET_EVENT_TYPE_RECEIVE:
-            printf ("A packet of length %u was received from %x:%u on channel %u.\n",
-            event.packet->dataLength,
-            event.peer->address.host,
-            event.peer->address.port,
-            event.channelID);
-            //printf("%d\n", ((PU_INPUT_PACKET*)event.packet->data)->frame_num);
+            if (SHOW_DEBUG) {
+              printf ("A packet of length %u was received from %x:%u on channel %u.\n",
+                event.packet->dataLength,
+                event.peer->address.host,
+                event.peer->address.port,
+                event.channelID);
+              printf("%d\n", ((PU_INPUT_PACKET*)event.packet->data)->frame_num);
+            }
             session->remote_frame = ((PU_INPUT_PACKET*)event.packet->data)->frame_num;
             enet_packet_destroy(event.packet);
             break;
@@ -170,12 +179,14 @@ void pu_update_network(PU_SESSION *session, ENetHost* player){
       while (enet_host_service(player ,&session->local_client_event, 0) > 0) {
         switch (session->local_client_event.type) {
           case ENET_EVENT_TYPE_RECEIVE:
-            printf ("A packet of length %u was received from %x:%u on channel %u.\n",
-            session->local_client_event.packet->dataLength,
-            session->local_client_event.peer->address.host,
-            session->local_client_event.peer->address.port,
-            session->local_client_event.channelID);
-            //printf("%d\n", ((PU_INPUT_PACKET*) session->local_client_event.packet->data)->frame_num);
+            if (SHOW_DEBUG) {
+              printf ("A packet of length %u was received from %x:%u on channel %u.\n",
+                session->local_client_event.packet->dataLength,
+                session->local_client_event.peer->address.host,
+                session->local_client_event.peer->address.port,
+                session->local_client_event.channelID);
+              printf("%d\n", ((PU_INPUT_PACKET*) session->local_client_event.packet->data)->frame_num);
+            }
             session->remote_frame = ((PU_INPUT_PACKET*) session->local_client_event.packet->data)->frame_num;
             enet_packet_destroy(session->local_client_event.packet);
             break;
