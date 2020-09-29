@@ -6,9 +6,11 @@ int main(void) {
   PU_SESSION session;
   PU_SESSION_CALLBACKS cb;
   pu_initialize(&session);
+  int dt = 16667;
   ENetHost* host = pu_create_host(&session);
   while (true) {
-    pu_run(&session,&cb,host);
+    pu_run(&session, &cb, host);
+    usleep(dt);
   }
   pu_destroy_host(host, &session);
   return 0;
