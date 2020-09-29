@@ -21,6 +21,7 @@ typedef enum PU_PLAYER_TYPE{
   PLAYER_CLIENT = 2,
   PLAYER_SPECTATOR = 3
 }PU_PLAYER_TYPE;
+
 typedef struct PU_SESSION{
   int local_frame;// Tracks the latest update frame.
   int remote_frame;// Tracks the latest frame received from the remote client
@@ -32,8 +33,13 @@ typedef struct PU_SESSION{
   ENetEvent local_client_event;
   ENetPeer* host_peer;
 }PU_SESSION;
+
+typedef void (*PU_SESSION_CALLBACK)(int frame_num);
 typedef struct PU_SESSION_CALLBACKS{
+  PU_SESSION_CALLBACK save_game_state;
+  PU_SESSION_CALLBACK restore_game_state;
 }PU_SESSION_CALLBACKS;
+
 // Declaration Funcs
 // Network Functions
 void pu_disconnect_from_host(PU_SESSION *session, ENetHost* client);
@@ -48,6 +54,7 @@ void pu_log(const char* message);
 void pu_destroy_host(ENetHost* host, PU_SESSION *session);
 // Please Undo Functions
 int pu_run(PU_SESSION *session);// X*X*
+void pu_handle_rollbacks(PU_SESSION *session, PU_SESSION_CALLBACKS *cb);// X*X*
 void pu_determine_sync_frame(PU_SESSION *session);// X*X*
 int pu_rollback_condition(PU_SESSION *session); // No need to rollback if we don't have a frame after the previous sync frame to synchronize to
 int pu_timesynced_condition(PU_SESSION *session);// Function for syncing both players making the other wait
@@ -56,8 +63,14 @@ int pu_timesynced_condition(PU_SESSION *session);// Function for syncing both pl
 #ifdef PLEASE_UNDO_IMPL_H
 // Please undo functions
 // Main Please Undo loop X*X*
-int pu_run(PU_SESSION *session){
+int pu_run(PU_SESSION *session, PU_SESSION_CALLBACKS *cb, ENetHost* player){
+  pu_update_network(session, player);
+  pu_handle_rollbacks(session, cb);
   return 0;
+}
+// X*X*
+void pu_handle_rollbacks(PU_SESSION *session, PU_SESSION_CALLBACKS *cb){
+
 }
 // X*X*
 void pu_determine_sync_frame(PU_SESSION *session){
