@@ -5,12 +5,11 @@
 #define ENET_IMPLEMENTATION
 #include "enet.h"
 #include <stdio.h>
-#include <stdbool.h>
 //PLEASE_UNDO DEBUG
-#define SHOW_DEBUG false // Show Debug messages
+#define SHOW_DEBUG 1// Show Debug messages
 //Declaration Constants
 #define MAX_ROLLBACK_FRAMES 10 // Specifies the maximum number of frames that can be resimulated
-#define FRAME_ADVANTAGE_LIMIT 3 // Only allow the local client to get so far ahead of remote
+#define FRAME_ADVANTAGE_LIMIT 4 // Only allow the local client to get so far ahead of remote
 #define INITIAL_FRAME 0 //Specifies the initial frame the game starts in. Cannot rollback before this frame
 #define ENET_CHANNELS 2// 1 for gameplay and 2 for text messages
 #define DEFAULT_PORT 9090
@@ -39,7 +38,7 @@ typedef struct PU_SESSION{
   ENetEvent local_client_event;
   ENetPeer* host_peer;
   //----------------------------------------------------------------------------
-  bool has_started;
+  int has_started;
 }PU_SESSION;
 
 typedef void (*PU_SESSION_CALLBACK)(int frame_num);
@@ -152,7 +151,7 @@ void pu_update_network(PU_SESSION *session, ENetHost* player){
             if (SHOW_DEBUG) {
               printf("A new client connected from %s:%u.\n", event.peer->address.host, event.peer->address.port);
             }
-            session->has_started = true;
+            session->has_started = 1;
             break;
           case ENET_EVENT_TYPE_DISCONNECT:
             if (SHOW_DEBUG) {
@@ -185,9 +184,10 @@ void pu_update_network(PU_SESSION *session, ENetHost* player){
                 session->local_client_event.peer->address.host,
                 session->local_client_event.peer->address.port,
                 session->local_client_event.channelID);
-              printf("%d\n", ((PU_INPUT_PACKET*) session->local_client_event.packet->data)->frame_num);
+              printf("%d\n", ((PU_INPUT_PACKET*)session->local_client_event.packet->data)->frame_num);
             }
-            session->remote_frame = ((PU_INPUT_PACKET*) session->local_client_event.packet->data)->frame_num;
+            session->has_started = 1;
+            session->remote_frame = ((PU_INPUT_PACKET*)session->local_client_event.packet->data)->frame_num;
             enet_packet_destroy(session->local_client_event.packet);
             break;
         }
@@ -283,7 +283,7 @@ int pu_initialize(PU_SESSION *session){
   session->remote_frame = INITIAL_FRAME;
   session->sync_frame = INITIAL_FRAME;
   session->remote_frame_advantage = 0;
-
+  session->has_started = 0;
   if (enet_initialize() != 0) {
     pu_log("An error occurred while initializing ENet.\n");
     return 1;
