@@ -59,7 +59,7 @@ void pu_deinitialize();
 int pu_initialize(PU_SESSION *session);
 void pu_log(const char* message);
 void pu_destroy_host(ENetHost* host, PU_SESSION *session);
-void pu_send_input(PU_SESSION *session, ENetHost *player, const void *input, int input_size);//X*X*
+void pu_send_input(PU_SESSION *session, ENetHost *player, void *input, int input_size);//X*X*
 // Please Undo Functions
 int pu_run(PU_SESSION *session, PU_SESSION_CALLBACKS *cb, ENetHost* player);// X*X*
 void pu_handle_rollbacks(PU_SESSION *session, PU_SESSION_CALLBACKS *cb);// X*X*
@@ -84,7 +84,7 @@ int pu_run(PU_SESSION *session, PU_SESSION_CALLBACKS *cb, ENetHost* player){
   return 0;
 }
 // X*X*
-void pu_send_input(PU_SESSION *session, ENetHost *player, const void *input, int input_size){
+void pu_send_input(PU_SESSION *session, ENetHost *player, void *input, int input_size){
   PU_INPUT_PACKET data;
   data.frame_num = session->local_frame;
   data.input = input;
