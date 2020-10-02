@@ -90,7 +90,7 @@ void pu_send_input(PU_SESSION *session, ENetHost *player, void *input, int input
   data.frame_num = session->local_frame;
   data.input = input;
 
-  ENetPacket* packet = enet_packet_create(&data, sizeof(data) + (input_size - 2), ENET_PACKET_FLAG_RELIABLE);
+  ENetPacket* packet = enet_packet_create(&data, (sizeof(data)-2) + input_size, ENET_PACKET_FLAG_RELIABLE);
 
   if (session->local_player_type == PLAYER_HOST) {
     enet_host_broadcast(player, 0, packet);
@@ -156,11 +156,12 @@ void pu_update_network(PU_SESSION *session, ENetHost* player){
             }
             if (!session->has_started) {
               session->has_started = 1;
+              event.peer->data = NULL;
             }
             break;
           case ENET_EVENT_TYPE_DISCONNECT:
             if (SHOW_DEBUG) {
-              printf ("%s disconnected.\n", event.peer->data);
+              printf ("%u disconnected.\n", event.peer->connectID);
             }
             event.peer->data = NULL;
             break;
@@ -173,7 +174,6 @@ void pu_update_network(PU_SESSION *session, ENetHost* player){
                 event.channelID);
               printf("Recieved Frame: %d - ", ((PU_INPUT_PACKET*)event.packet->data)->frame_num);
               printf("Recieved Input: %d - ", ((PU_INPUT_PACKET*)event.packet->data)->input);
-              printf("RTT: %d MS\n", event.peer->roundTripTime);
             }
             session->remote_frame = ((PU_INPUT_PACKET*)event.packet->data)->frame_num;
             enet_packet_destroy(event.packet);
@@ -193,7 +193,6 @@ void pu_update_network(PU_SESSION *session, ENetHost* player){
                 session->local_client_event.channelID);
               printf("Recieved Frame: %d - ", ((PU_INPUT_PACKET*)session->local_client_event.packet->data)->frame_num);
               printf("Recieved Input: %d - ", ((PU_INPUT_PACKET*)session->local_client_event.packet->data)->input);
-              printf("RTT: %d MS\n", session->local_client_event.peer->roundTripTime);
             }
             if (!session->has_started) {
               session->has_started = 1;
