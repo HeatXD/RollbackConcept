@@ -173,7 +173,7 @@ void pu_update_network(PU_SESSION *session, ENetHost* player){
                 event.channelID);
               printf("Recieved Frame: %d - ", ((PU_INPUT_PACKET*)event.packet->data)->frame_num);
               printf("Recieved Input: %d - ", ((PU_INPUT_PACKET*)event.packet->data)->input);
-              printf("RTT: %d MS\n", event.peer->lastRoundTripTime);
+              printf("RTT: %d MS\n", event.peer->roundTripTime);
             }
             session->remote_frame = ((PU_INPUT_PACKET*)event.packet->data)->frame_num;
             enet_packet_destroy(event.packet);
@@ -193,7 +193,7 @@ void pu_update_network(PU_SESSION *session, ENetHost* player){
                 session->local_client_event.channelID);
               printf("Recieved Frame: %d - ", ((PU_INPUT_PACKET*)session->local_client_event.packet->data)->frame_num);
               printf("Recieved Input: %d - ", ((PU_INPUT_PACKET*)session->local_client_event.packet->data)->input);
-              printf("RTT: %d MS\n", session->local_client_event.peer->lastRoundTripTime);
+              printf("RTT: %d MS\n", session->local_client_event.peer->roundTripTime);
             }
             if (!session->has_started) {
               session->has_started = 1;
