@@ -24,7 +24,7 @@ typedef enum PU_PLAYER_TYPE{
 
 typedef struct PU_INPUT_PACKET{
   int frame_num;
-  const void* input;
+  void* input;
 }PU_INPUT_PACKET;
 
 typedef struct PU_SESSION{
@@ -77,8 +77,9 @@ int pu_run(PU_SESSION *session, PU_SESSION_CALLBACKS *cb, ENetHost* player){
     //pu_handle_rollbacks(session, cb);
     if (pu_timesynced_condition(session)){
       session->local_frame++;
-      printf("CURRENT FRAME: %d - REMOTE FRAME: %d - REMOTE FRAME ADVANTAGE: %d\n", session->local_frame, session->remote_frame, session->remote_frame_advantage);
-      pu_send_input(session, player, (int*)session->local_frame, sizeof(session->local_frame));
+      //printf("CURRENT FRAME: %d - REMOTE FRAME: %d - REMOTE FRAME ADVANTAGE: %d\n", session->local_frame, session->remote_frame, session->remote_frame_advantage);
+      int testdata = 232;
+      pu_send_input(session, player, (int*)testdata, sizeof(testdata));
     }
   }
   return 0;
@@ -89,7 +90,7 @@ void pu_send_input(PU_SESSION *session, ENetHost *player, void *input, int input
   data.frame_num = session->local_frame;
   data.input = input;
 
-  ENetPacket* packet = enet_packet_create(&data, (sizeof(data)-sizeof(data.input)) + input_size, ENET_PACKET_FLAG_RELIABLE);
+  ENetPacket* packet = enet_packet_create(&data, sizeof(data) + (input_size - 2), ENET_PACKET_FLAG_RELIABLE);
 
   if (session->local_player_type == PLAYER_HOST) {
     enet_host_broadcast(player, 0, packet);
@@ -100,8 +101,9 @@ void pu_send_input(PU_SESSION *session, ENetHost *player, void *input, int input
 // X*X*
 void pu_handle_rollbacks(PU_SESSION *session, PU_SESSION_CALLBACKS *cb){
   pu_determine_sync_frame(session);
-  if (pu_timesynced_condition(session)) {
-    cb->restore_game_state(0);
+  if (pu_rollback_condition(session)) {
+    cb->restore_game_state(session->local_frame);
+    cb->save_game_state(session->local_frame);
   }
 }
 // X*X*
@@ -111,7 +113,8 @@ void pu_determine_sync_frame(PU_SESSION *session){
   if (session->remote_frame > session->local_frame) {
     final_frame = session->remote_frame;  //Incase the remote client is ahead of local, don't check past the local frame.
   }
-  //select frames from (sync_frame + 1) through final_frame and find the first frame where predicted and remote inputs don't match TODO
+  //select frames from (sync_frame + 1) through final_frame and find the first frame where predicted and remote inputs don't match
+
   //if (found_frame) {
   //  session->sync_frame = found_frame -1;  //The found frame is the first frame where inputs don't match, so assume the previous frame is synchronized
   //}else{
@@ -151,7 +154,9 @@ void pu_update_network(PU_SESSION *session, ENetHost* player){
             if (SHOW_DEBUG) {
               printf("A new client connected from %s:%u.\n", event.peer->address.host, event.peer->address.port);
             }
-            session->has_started = 1;
+            if (!session->has_started) {
+              session->has_started = 1;
+            }
             break;
           case ENET_EVENT_TYPE_DISCONNECT:
             if (SHOW_DEBUG) {
@@ -166,7 +171,9 @@ void pu_update_network(PU_SESSION *session, ENetHost* player){
                 event.peer->address.host,
                 event.peer->address.port,
                 event.channelID);
-              printf("%d\n", ((PU_INPUT_PACKET*)event.packet->data)->frame_num);
+              printf("Recieved Frame: %d - ", ((PU_INPUT_PACKET*)event.packet->data)->frame_num);
+              printf("Recieved Input: %d - ", ((PU_INPUT_PACKET*)event.packet->data)->input);
+              printf("RTT: %d MS\n", event.peer->lastRoundTripTime);
             }
             session->remote_frame = ((PU_INPUT_PACKET*)event.packet->data)->frame_num;
             enet_packet_destroy(event.packet);
@@ -184,9 +191,13 @@ void pu_update_network(PU_SESSION *session, ENetHost* player){
                 session->local_client_event.peer->address.host,
                 session->local_client_event.peer->address.port,
                 session->local_client_event.channelID);
-              printf("%d\n", ((PU_INPUT_PACKET*)session->local_client_event.packet->data)->frame_num);
+              printf("Recieved Frame: %d - ", ((PU_INPUT_PACKET*)session->local_client_event.packet->data)->frame_num);
+              printf("Recieved Input: %d - ", ((PU_INPUT_PACKET*)session->local_client_event.packet->data)->input);
+              printf("RTT: %d MS\n", session->local_client_event.peer->lastRoundTripTime);
             }
-            session->has_started = 1;
+            if (!session->has_started) {
+              session->has_started = 1;
+            }
             session->remote_frame = ((PU_INPUT_PACKET*)session->local_client_event.packet->data)->frame_num;
             enet_packet_destroy(session->local_client_event.packet);
             break;
