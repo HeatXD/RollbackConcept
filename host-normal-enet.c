@@ -45,7 +45,7 @@ int main (int argc, char ** argv){
     			case ENET_EVENT_TYPE_CONNECT:
     				printf ("A new client connected from %x:%u.\n",
     		  		event.peer -> address.host,
-    				event.peer -> address.port);
+    				  event.peer -> address.port);
     			break;
 
     			case ENET_EVENT_TYPE_RECEIVE:

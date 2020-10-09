@@ -19,16 +19,20 @@ int main(void) {
   cb.restore_game_state = restore_state;
   cb.save_game_state = save_state;
 
-  pu_initialize(&session);
+  pu_initialize(&session, sizeof(int));
   client = pu_create_client(&session);
   int result = pu_connect_to_host(client, &session, "127.0.0.1");
 
   do {
     pu_run(&session, &cb, client);
+    int input = 321;
+    pu_add_local_input(&session, input);
     usleep(dt);
   } while(result == 1);
 
   pu_disconnect_from_host(&session, client);
   pu_destroy_client(client);
+
+  pu_deinitialize(&session);
   return 0;
 }

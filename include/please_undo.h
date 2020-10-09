@@ -5,6 +5,7 @@
 #define ENET_IMPLEMENTATION
 #include "enet.h"
 #include <stdio.h>
+#include "cvector.h"
 //PLEASE_UNDO DEBUG
 #define SHOW_DEBUG 1// Show Debug messages
 //Declaration Constants
@@ -14,12 +15,14 @@
 #define ENET_CHANNELS 2// 1 for gameplay and 2 for text messages
 #define DEFAULT_PORT 9090
 #define ENET_CHANNELS 2
-#define MAX_PEERS 10
+#define MAX_PEERS 1
+
 //Declaration Structs and enums
+
 typedef enum PU_PLAYER_TYPE{
   PLAYER_HOST = 1,
   PLAYER_CLIENT = 2,
-  PLAYER_SPECTATOR = 3
+  PLAYER_SPECTATOR = 3// not implemented yet X*X*
 }PU_PLAYER_TYPE;
 
 typedef struct PU_INPUT_PACKET{
@@ -38,6 +41,7 @@ typedef struct PU_SESSION{
   ENetEvent local_client_event;
   ENetPeer* host_peer;
   //----------------------------------------------------------------------------
+  int input_size;
   int has_started;
 }PU_SESSION;
 
@@ -56,10 +60,11 @@ ENetHost* pu_create_client(PU_SESSION *session);
 void pu_update_network(PU_SESSION *session, ENetHost* player);
 ENetHost* pu_create_host(PU_SESSION *session);
 void pu_deinitialize();
-int pu_initialize(PU_SESSION *session);
+int pu_initialize(PU_SESSION *session, int input_size);
 void pu_log(const char* message);
 void pu_destroy_host(ENetHost* host, PU_SESSION *session);
-void pu_send_input(PU_SESSION *session, ENetHost *player, void *input, int input_size);//X*X*
+void pu_send_input(PU_SESSION *session, ENetHost *player, void *input);//X*X*
+void pu_add_local_input(PU_SESSION *session, void* input); //X*X*
 // Please Undo Functions
 int pu_run(PU_SESSION *session, PU_SESSION_CALLBACKS *cb, ENetHost* player);// X*X*
 void pu_handle_rollbacks(PU_SESSION *session, PU_SESSION_CALLBACKS *cb);// X*X*
@@ -70,6 +75,10 @@ int pu_timesynced_condition(PU_SESSION *session);// Function for syncing both pl
 // Implementation
 #ifdef PLEASE_UNDO_IMPL_H
 // Please undo functions
+// Add local input X*X*
+void pu_add_local_input(PU_SESSION *session, void* input){
+
+}
 // Main Please Undo loop X*X*
 int pu_run(PU_SESSION *session, PU_SESSION_CALLBACKS *cb, ENetHost* player){
   pu_update_network(session, player);
@@ -78,19 +87,20 @@ int pu_run(PU_SESSION *session, PU_SESSION_CALLBACKS *cb, ENetHost* player){
     if (pu_timesynced_condition(session)){
       session->local_frame++;
       //printf("CURRENT FRAME: %d - REMOTE FRAME: %d - REMOTE FRAME ADVANTAGE: %d\n", session->local_frame, session->remote_frame, session->remote_frame_advantage);
-      int testdata = 232;
-      pu_send_input(session, player, (int*)testdata, sizeof(testdata));
+      int testdata = 2333323;
+      pu_send_input(session, player, (int*)testdata);
     }
   }
   return 0;
 }
 // X*X*
-void pu_send_input(PU_SESSION *session, ENetHost *player, void *input, int input_size){
+void pu_send_input(PU_SESSION *session, ENetHost *player, void *input){
   PU_INPUT_PACKET data;
+
   data.frame_num = session->local_frame;
   data.input = input;
 
-  ENetPacket* packet = enet_packet_create(&data, (sizeof(data)-2) + input_size, ENET_PACKET_FLAG_RELIABLE);
+  ENetPacket* packet = enet_packet_create(&data, (sizeof(data))+session->input_size, ENET_PACKET_FLAG_RELIABLE);
 
   if (session->local_player_type == PLAYER_HOST) {
     enet_host_broadcast(player, 0, packet);
@@ -112,6 +122,9 @@ void pu_determine_sync_frame(PU_SESSION *session){
 
   if (session->remote_frame > session->local_frame) {
     final_frame = session->remote_frame;  //Incase the remote client is ahead of local, don't check past the local frame.
+  }
+  for (int i = session->sync_frame; i <= final_frame; i++) {
+
   }
   //select frames from (sync_frame + 1) through final_frame and find the first frame where predicted and remote inputs don't match
 
@@ -155,7 +168,7 @@ void pu_update_network(PU_SESSION *session, ENetHost* player){
               printf("A new client connected from %s:%u.\n", event.peer->address.host, event.peer->address.port);
             }
             if (!session->has_started) {
-              session->has_started = 1;
+              session->has_started = true;
               event.peer->data = NULL;
             }
             break;
@@ -195,7 +208,7 @@ void pu_update_network(PU_SESSION *session, ENetHost* player){
               printf("Recieved Input: %d - ", ((PU_INPUT_PACKET*)session->local_client_event.packet->data)->input);
             }
             if (!session->has_started) {
-              session->has_started = 1;
+              session->has_started = true;
             }
             session->remote_frame = ((PU_INPUT_PACKET*)session->local_client_event.packet->data)->frame_num;
             enet_packet_destroy(session->local_client_event.packet);
@@ -288,12 +301,13 @@ void pu_log(const char* message){
   }
 }
 // initialize Please undo session and ENet
-int pu_initialize(PU_SESSION *session){
+int pu_initialize(PU_SESSION *session, int input_size){
   session->local_frame = INITIAL_FRAME;
   session->remote_frame = INITIAL_FRAME;
   session->sync_frame = INITIAL_FRAME;
   session->remote_frame_advantage = 0;
-  session->has_started = 0;
+  session->input_size = input_size;
+  session->has_started = false;
   if (enet_initialize() != 0) {
     pu_log("An error occurred while initializing ENet.\n");
     return 1;
