@@ -16,8 +16,7 @@
 #define DEFAULT_PORT 9090
 #define ENET_CHANNELS 2
 #define MAX_PEERS 1
-#define ROUND_TIME 99 // in seconds
-#define INPUT_RESERVSE_SPACE ROUND_TIME*60 // frames per round
+#define INPUT_RESERVSE_SPACE MAX_ROLLBACK_FRAMES*60
 //Declaration Structs and enums
 typedef enum PU_PLAYER_TYPE{
   PLAYER_HOST = 1,
@@ -50,7 +49,6 @@ typedef struct PU_SESSION{
   int has_started;
 }PU_SESSION;
 // Declaration Funcs
-// Network Functions
 void pu_disconnect_from_host(PU_SESSION *session, ENetHost* client);
 void pu_destroy_client(ENetHost* client);
 int pu_connect_to_host(ENetHost* client, PU_SESSION *session, char* ip_address);
@@ -63,18 +61,46 @@ void pu_log(const char* message);
 void pu_destroy_host(ENetHost* host, PU_SESSION *session);
 void pu_send_input(PU_SESSION *session, ENetHost *player, uint16_t input);// send player input over the wire with its associated frame number
 void pu_add_local_input(PU_SESSION *session, ENetHost *player, uint16_t input); //Add local input and send it
-// Please Undo Functions
-void pu_determine_sync_frame(PU_SESSION *session);// X*X*
+void pu_add_remote_input(PU_SESSION *session, uint16_t input);// Add Recieved input to input vector
+void pu_predict_remote_input(PU_SESSION *session);//predict remote input if not yet available simply use the previous input.
+void pu_determine_sync_frame(PU_SESSION *session);// Finds the last frame where the inputs were matched
 int pu_rollback_condition(PU_SESSION *session); // No need to rollback if we don't have a frame after the previous sync frame to synchronize to
 int pu_timesynced_condition(PU_SESSION *session);// Function for syncing both players making the other wait
+void pu_handle_rollbacks(PU_SESSION *session)//X*X*
 //-----------------------------------------------------------------------------
 // Implementation
 #ifdef PLEASE_UNDO_IMPL_H
 // Please undo functions
+//rollback sequence
+void pu_handle_rollbacks(PU_SESSION *session){
+//restore gamestate to sync frame
+  for (int i = session->sync_frame + 1; i <= session->local_frame; i++) {
+    //update input
+    //advance gamestate
+    //store gamestate
+  }
+}
+//predict remote input if not yet available simply use the previous input.
+void pu_predict_remote_input(PU_SESSION *session){
+  if (session->player_input[1].input_vector[session->local_frame-1] == NULL) {
+    session->player_input[2].input_vector[session->local_frame-1] = session->player_input[2].input_vector[session->local_frame-2];
+    session->player_input[1].input_vector[session->local_frame-1] = session->player_input[2].input_vector[session->local_frame-2];
+  }
+};
+// Add Recieved input to input vector
+void pu_add_remote_input(PU_SESSION *session, uint16_t input){
+  session->player_input[1].input_vector[session->remote_frame-1] = input;
+  session->player_input[2].input_vector[session->remote_frame-1] = input;
+};
 // Add local input and send it
 void pu_add_local_input(PU_SESSION *session, ENetHost *player, uint16_t input){
+  if (vector_capacity(session->player_input[0].input_vector) < session->local_frame ) {
+    vector_reserve(session->player_input[0].input_vector, vector_capacity(session->player_input[0].input_vector) + INPUT_RESERVSE_SPACE);
+    vector_reserve(session->player_input[1].input_vector, vector_capacity(session->player_input[1].input_vector) + INPUT_RESERVSE_SPACE);
+    vector_reserve(session->player_input[2].input_vector, vector_capacity(session->player_input[2].input_vector) + INPUT_RESERVSE_SPACE);
+  }
   session->player_input[0].input_vector[session->local_frame-1] = input;
-  printf("input[%d] = %u\n", session->local_frame, session->player_input[0].input_vector[session->local_frame-1]);
+  //printf("input[%d] = %u\n", session->local_frame-1, session->player_input[0].input_vector[session->local_frame-1]);
   pu_send_input(session, player, input);
 }
 // send player input over the wire with its associated frame number
@@ -98,7 +124,7 @@ void pu_determine_sync_frame(PU_SESSION *session){
   int found_frame = INITIAL_FRAME - 1;
 
   if (session->remote_frame > session->local_frame) {
-    final_frame = session->remote_frame;  //Incase the remote client is ahead of local, don't check past the local frame.
+    final_frame = session->remote_frame;  // Incase the remote client is ahead of local, don't check past the local frame.
   }
 
   for (int i = session->sync_frame + 1; i <= final_frame; i++) {

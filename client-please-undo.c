@@ -22,16 +22,21 @@ int main(void) {
   do {
     pu_update_network(&session, client);
     if (session.has_started){
-      //pu_determine_sync_frame(&session);
+      pu_determine_sync_frame(&session);
       if (pu_rollback_condition(&session)) {
         pu_log("Should Rollback!\n");
+
         //printf("CURRENT FRAME: %d - REMOTE FRAME: %d - SYNC FRAME: %d\n", session.local_frame, session.remote_frame, session.sync_frame);
       }
       if (pu_timesynced_condition(&session)){
+        pu_log("normal update\n");
         session.local_frame++;
-        uint16_t test_input = 33;
+        uint16_t test_input = 33 + session.local_frame;
         //pu_send_input(&session, client, test_input);
         pu_add_local_input(&session, client, test_input);
+        pu_predict_remote_input(&session);
+        //advance gamestate
+        //save gamestate
       }
     }
     usleep(dt);
