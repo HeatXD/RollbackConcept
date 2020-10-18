@@ -1,3 +1,26 @@
+/*
+MIT License
+
+Copyright (c) 2020 HeatXD
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
 //Oh ye btw *X*X means not implemented or not done yet : Jamie/heatxd
 //-----------------------------------------------------------------------------
 #ifndef PLEASE_UNDO_H
@@ -11,6 +34,7 @@
 //Declaration Constants
 #define MAX_ROLLBACK_FRAMES 10 // Specifies the maximum number of frames that can be resimulated
 #define FRAME_ADVANTAGE_LIMIT 4 // Only allow the local client to get so far ahead of remote
+#define FRAME_DELAY 2 // Not implemented yet X*X*
 #define INITIAL_FRAME 0 //Specifies the initial frame the game starts in. Cannot rollback before this frame
 #define ENET_CHANNELS 2// ch1 for gameplay and ch2 for text messages
 #define DEFAULT_PORT 9090
@@ -18,6 +42,15 @@
 #define MAX_PEERS 1
 #define INPUT_RESERVSE_SPACE MAX_ROLLBACK_FRAMES*60
 //Declaration Structs and enums
+// this is a prat with will differ per program. the programmer may have to llok to change these callback functions to make it compatible with his use case
+typedef void (*PU_SESSION_CALLBACK)(int frame, void* a, void* b);
+typedef struct PU_SESSION_CALLBACKS{
+  PU_SESSION_CALLBACK save_game_state;
+  PU_SESSION_CALLBACK restore_game_state;
+  PU_SESSION_CALLBACK advance_game_state;
+  PU_SESSION_CALLBACK render_game_state;
+}PU_SESSION_CALLBACKS;
+
 typedef enum PU_PLAYER_TYPE{
   PLAYER_HOST = 1,
   PLAYER_CLIENT = 2,
@@ -66,25 +99,18 @@ void pu_predict_remote_input(PU_SESSION *session);//predict remote input if not 
 void pu_determine_sync_frame(PU_SESSION *session);// Finds the last frame where the inputs were matched
 int pu_rollback_condition(PU_SESSION *session); // No need to rollback if we don't have a frame after the previous sync frame to synchronize to
 int pu_timesynced_condition(PU_SESSION *session);// Function for syncing both players making the other wait
-void pu_handle_rollbacks(PU_SESSION *session)//X*X*
 //-----------------------------------------------------------------------------
 // Implementation
 #ifdef PLEASE_UNDO_IMPL_H
 // Please undo functions
-//rollback sequence
-void pu_handle_rollbacks(PU_SESSION *session){
-//restore gamestate to sync frame
-  for (int i = session->sync_frame + 1; i <= session->local_frame; i++) {
-    //update input
-    //advance gamestate
-    //store gamestate
-  }
-}
 //predict remote input if not yet available simply use the previous input.
 void pu_predict_remote_input(PU_SESSION *session){
-  if (session->player_input[1].input_vector[session->local_frame-1] == NULL) {
+  if (session->player_input[1].input_vector[session->local_frame-1] != 0) {
     session->player_input[2].input_vector[session->local_frame-1] = session->player_input[2].input_vector[session->local_frame-2];
     session->player_input[1].input_vector[session->local_frame-1] = session->player_input[2].input_vector[session->local_frame-2];
+  }else{
+    session->player_input[2].input_vector[session->local_frame-1] = 0;
+    session->player_input[1].input_vector[session->local_frame-1] = 0;
   }
 };
 // Add Recieved input to input vector
@@ -196,13 +222,15 @@ void pu_update_network(PU_SESSION *session, ENetHost* player){
               printf("Recieved Input: %u \n", ((PU_INPUT_PACKET*)event.packet->data)->input);
             }
             session->remote_frame = ((PU_INPUT_PACKET*)event.packet->data)->frame_num;
+            uint16_t remote_input = ((PU_INPUT_PACKET*)event.packet->data)->input;
+            //pu_add_remote_input(session, remote_input);
             enet_packet_destroy(event.packet);
             break;
         }
       }
       break;
     case PLAYER_CLIENT:
-      while (enet_host_service(player ,&session->local_client_event, 0) > 0) {
+      while (enet_host_service(player, &session->local_client_event, 0) > 0) {
         switch (session->local_client_event.type) {
           case ENET_EVENT_TYPE_RECEIVE:
             if (SHOW_DEBUG) {
@@ -218,6 +246,8 @@ void pu_update_network(PU_SESSION *session, ENetHost* player){
               session->has_started = true;
             }
             session->remote_frame = ((PU_INPUT_PACKET*)session->local_client_event.packet->data)->frame_num;
+            //uint16_t remote_input = ((PU_INPUT_PACKET*)event.packet->data)->input;
+            //pu_add_remote_input(session, remote_input);
             enet_packet_destroy(session->local_client_event.packet);
             break;
         }
