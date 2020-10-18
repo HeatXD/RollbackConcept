@@ -11,12 +11,12 @@ typedef struct GameStateVector{
 }GameStateVector;
 
 GameState gs = {0,0,0};
-GameStateVector gs_vec = {.gs_vector = NULL)};
+GameStateVector gs_vec = {.gs_vector = NULL};
 
 void save_game_state(int frame, GameStateVector* gs_vec, GameState* gs){
-  printf("//====================================================//\n");
+  //printf("//====================================================//\n");
   printf("Save Game State at Frame: %d\n", frame);
-  if (frame > vector_capacity(gs_vec->gs_vector)) {
+  if (frame >= vector_capacity(gs_vec->gs_vector)) {
     vector_reserve(gs_vec->gs_vector,vector_capacity(gs_vec->gs_vector) + 30);
   }
   GameState temp_gs = *gs;
@@ -24,7 +24,7 @@ void save_game_state(int frame, GameStateVector* gs_vec, GameState* gs){
 }
 
 void restore_game_state(int frame, GameStateVector* gs_vec, GameState* gs){
-  printf("//====================================================//\n");
+//  printf("//====================================================//\n");
   printf("Restore Game State at Frame: %d\n", frame);
   gs->Member1 = gs_vec->gs_vector[frame-1].Member1;
   gs->Member2 = gs_vec->gs_vector[frame-1].Member2;
@@ -32,7 +32,7 @@ void restore_game_state(int frame, GameStateVector* gs_vec, GameState* gs){
 }
 
 void advance_game_state(int frame, GameState* gs, PU_INPUT_STORAGE* inputs){
-  printf("//====================================================//\n");
+//  printf("//====================================================//\n");
   printf("Advance the Game State Forward one step\n");
   gs->Member1 += 2;
   gs->Member2 = inputs[0].input_vector[frame-1];
@@ -40,7 +40,7 @@ void advance_game_state(int frame, GameState* gs, PU_INPUT_STORAGE* inputs){
 }
 
 void render_game_state(int frame, GameState* gs){
-  printf("//====================================================//\n");
+//  printf("//====================================================//\n");
   printf("Render Current Game State\n");
   printf("M1 = %d, M2 = %d, M3 = %d\n", gs->Member1, gs->Member2, gs->Member3);
 }
@@ -65,7 +65,6 @@ int main(void) {
     if (session.has_started){
       pu_determine_sync_frame(&session);
       if (pu_rollback_condition(&session)) {
-        pu_log("Should Rollback!\n");
         //restore gamestate to sync frame
         cb.restore_game_state(session.sync_frame, &gs_vec, &gs);
         //use all the inputs since the last sync frame until the current frame to simulate
@@ -82,9 +81,9 @@ int main(void) {
         //increment local frame
         session.local_frame++;
         //get local player input
-        uint16_t test_input = 201;
+        uint16_t test_input = 90;
         pu_add_local_input(&session, client, test_input);
-        pu_predict_remote_input(&session);
+        pu_predict_remote_input(&session, session.local_frame);
         //normal update with rendering
         //update input to be used in the game
         //advance gamestate

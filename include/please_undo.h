@@ -29,12 +29,13 @@ SOFTWARE.
 #include "enet.h"
 #include "cvector.h"
 #include <stdio.h>
+#include <stdbool.h>
 //PLEASE_UNDO DEBUG
 #define SHOW_DEBUG 1// Show Debug messages
 //Declaration Constants
 #define MAX_ROLLBACK_FRAMES 10 // Specifies the maximum number of frames that can be resimulated
-#define FRAME_ADVANTAGE_LIMIT 4 // Only allow the local client to get so far ahead of remote
-#define FRAME_DELAY 2 // Not implemented yet X*X*
+#define FRAME_ADVANTAGE_LIMIT 6 // Only allow the local client to get so far ahead of remote
+#define LOCAL_FRAME_DELAY 2 // should never be below 1
 #define INITIAL_FRAME 0 //Specifies the initial frame the game starts in. Cannot rollback before this frame
 #define ENET_CHANNELS 2// ch1 for gameplay and ch2 for text messages
 #define DEFAULT_PORT 9090
@@ -95,7 +96,7 @@ void pu_destroy_host(ENetHost* host, PU_SESSION *session);
 void pu_send_input(PU_SESSION *session, ENetHost *player, uint16_t input);// send player input over the wire with its associated frame number
 void pu_add_local_input(PU_SESSION *session, ENetHost *player, uint16_t input); //Add local input and send it
 void pu_add_remote_input(PU_SESSION *session, uint16_t input);// Add Recieved input to input vector
-void pu_predict_remote_input(PU_SESSION *session);//predict remote input if not yet available simply use the previous input.
+void pu_predict_remote_input(PU_SESSION *session, int frame);//predict remote input if not yet available simply use the previous input.
 void pu_determine_sync_frame(PU_SESSION *session);// Finds the last frame where the inputs were matched
 int pu_rollback_condition(PU_SESSION *session); // No need to rollback if we don't have a frame after the previous sync frame to synchronize to
 int pu_timesynced_condition(PU_SESSION *session);// Function for syncing both players making the other wait
@@ -104,36 +105,52 @@ int pu_timesynced_condition(PU_SESSION *session);// Function for syncing both pl
 #ifdef PLEASE_UNDO_IMPL_H
 // Please undo functions
 //predict remote input if not yet available simply use the previous input.
-void pu_predict_remote_input(PU_SESSION *session){
-  if (session->player_input[1].input_vector[session->local_frame-1] != 0) {
-    session->player_input[2].input_vector[session->local_frame-1] = session->player_input[2].input_vector[session->local_frame-2];
-    session->player_input[1].input_vector[session->local_frame-1] = session->player_input[2].input_vector[session->local_frame-2];
+void pu_predict_remote_input(PU_SESSION *session, int frame){
+  if (SHOW_DEBUG) {
+      printf("SYNC FRAME = %d\n", session->sync_frame);
+  }
+  if (session->player_input[1].input_vector[frame-1] == 0 & session->player_input[1].input_vector[frame-2] == 0) {
+    session->player_input[1].input_vector[frame-1] = 0;
+    session->player_input[2].input_vector[frame-1] = 0;
+  }else if (session->player_input[1].input_vector[frame-1] == 0 & session->player_input[1].input_vector[frame-2] != 0) {
+    session->player_input[1].input_vector[frame-1] = session->player_input[1].input_vector[frame-2];
+    session->player_input[2].input_vector[frame-1] = session->player_input[1].input_vector[frame-2];
   }else{
-    session->player_input[2].input_vector[session->local_frame-1] = 0;
-    session->player_input[1].input_vector[session->local_frame-1] = 0;
+    session->player_input[1].input_vector[frame-1] = session->player_input[1].input_vector[session->sync_frame-1];
+    session->player_input[2].input_vector[frame-1] = session->player_input[1].input_vector[session->sync_frame-1];
   }
 };
 // Add Recieved input to input vector
 void pu_add_remote_input(PU_SESSION *session, uint16_t input){
+  if (session->remote_frame >= vector_capacity(session->player_input[1].input_vector)) {
+    vector_reserve(session->player_input[1].input_vector, vector_capacity(session->player_input[1].input_vector) + INPUT_RESERVSE_SPACE);
+    vector_reserve(session->player_input[2].input_vector, vector_capacity(session->player_input[2].input_vector) + INPUT_RESERVSE_SPACE);
+  }
   session->player_input[1].input_vector[session->remote_frame-1] = input;
   session->player_input[2].input_vector[session->remote_frame-1] = input;
 };
 // Add local input and send it
 void pu_add_local_input(PU_SESSION *session, ENetHost *player, uint16_t input){
-  if (vector_capacity(session->player_input[0].input_vector) < session->local_frame ) {
+  if (vector_capacity(session->player_input[0].input_vector) < session->local_frame + (MAX_ROLLBACK_FRAMES + LOCAL_FRAME_DELAY)) {
     vector_reserve(session->player_input[0].input_vector, vector_capacity(session->player_input[0].input_vector) + INPUT_RESERVSE_SPACE);
     vector_reserve(session->player_input[1].input_vector, vector_capacity(session->player_input[1].input_vector) + INPUT_RESERVSE_SPACE);
     vector_reserve(session->player_input[2].input_vector, vector_capacity(session->player_input[2].input_vector) + INPUT_RESERVSE_SPACE);
   }
-  session->player_input[0].input_vector[session->local_frame-1] = input;
-  //printf("input[%d] = %u\n", session->local_frame-1, session->player_input[0].input_vector[session->local_frame-1]);
+  session->player_input[0].input_vector[(session->local_frame-1) + LOCAL_FRAME_DELAY] = input;
+
+  if (SHOW_DEBUG) {
+    printf("See Input\n");
+    printf("P1-input[%d] = %u\n", session->local_frame, session->player_input[0].input_vector[session->local_frame-1]);
+    printf("P2-input[%d] = %u\n", session->local_frame, session->player_input[1].input_vector[session->local_frame-1]);
+  }
+
   pu_send_input(session, player, input);
 }
 // send player input over the wire with its associated frame number
 void pu_send_input(PU_SESSION *session, ENetHost *player, uint16_t input){
   PU_INPUT_PACKET data;
 
-  data.frame_num = session->local_frame;
+  data.frame_num = session->local_frame + LOCAL_FRAME_DELAY;
   data.input = input;
 
   ENetPacket* packet = enet_packet_create(&data, sizeof(data), ENET_PACKET_FLAG_RELIABLE);
@@ -158,6 +175,8 @@ void pu_determine_sync_frame(PU_SESSION *session){
         pu_log("Found wrong prediction!\n");
         found_frame = i;
         break;
+    }else{
+      pu_log("No wrong prediction found!\n");
     }
   }
 
@@ -171,25 +190,27 @@ void pu_determine_sync_frame(PU_SESSION *session){
 int pu_timesynced_condition(PU_SESSION *session){
   int local_frame_advantage = session->local_frame - session->remote_frame;// How far the client is ahead of the last reported frame by the remote client
   int frame_advantage_difference = local_frame_advantage - session->remote_frame_advantage;// How different is the frame advantage reported by the remote client and this one
-
-  if (local_frame_advantage < MAX_ROLLBACK_FRAMES && frame_advantage_difference <= FRAME_ADVANTAGE_LIMIT) {// Only allow the local client to get so far ahead of remote
+  // Only allow the local client to get so far ahead of remote
+  if (local_frame_advantage < MAX_ROLLBACK_FRAMES && frame_advantage_difference <= FRAME_ADVANTAGE_LIMIT) {
+    pu_log("TIME IS SYNCED!\n");
     return true;
   }else{
+    pu_log("TIME IS NOT SYNCED!\n");
     return false;
   }
 }
 // No need to rollback if we don't have a frame after the previous sync frame to synchronize to
 int pu_rollback_condition(PU_SESSION *session){
   if (session->local_frame > session->sync_frame && session->remote_frame > session->sync_frame) {
+    pu_log("Should Rollback!\n");
     return true;
   } else {
+    pu_log("Shouldnt Rollback!\n");
     return false;
   }
 }
 // Network functions
 void pu_update_network(PU_SESSION *session, ENetHost* player){
-  session->remote_frame_advantage = (session->local_frame - session->remote_frame);
-
   ENetEvent event;
 
   switch (session->local_player_type) {
@@ -222,8 +243,7 @@ void pu_update_network(PU_SESSION *session, ENetHost* player){
               printf("Recieved Input: %u \n", ((PU_INPUT_PACKET*)event.packet->data)->input);
             }
             session->remote_frame = ((PU_INPUT_PACKET*)event.packet->data)->frame_num;
-            uint16_t remote_input = ((PU_INPUT_PACKET*)event.packet->data)->input;
-            //pu_add_remote_input(session, remote_input);
+            pu_add_remote_input(session, ((PU_INPUT_PACKET*)event.packet->data)->input);
             enet_packet_destroy(event.packet);
             break;
         }
@@ -246,14 +266,14 @@ void pu_update_network(PU_SESSION *session, ENetHost* player){
               session->has_started = true;
             }
             session->remote_frame = ((PU_INPUT_PACKET*)session->local_client_event.packet->data)->frame_num;
-            //uint16_t remote_input = ((PU_INPUT_PACKET*)event.packet->data)->input;
-            //pu_add_remote_input(session, remote_input);
+            pu_add_remote_input(session, ((PU_INPUT_PACKET*)session->local_client_event.packet->data)->input);
             enet_packet_destroy(session->local_client_event.packet);
             break;
         }
       }
       break;
   }
+  session->remote_frame_advantage = (session->local_frame - session->remote_frame);
 }
 //cleanup enethost client
 void pu_destroy_client(ENetHost* client){
