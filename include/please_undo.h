@@ -31,7 +31,7 @@ SOFTWARE.
 #include <stdio.h>
 #include <stdbool.h>
 //PLEASE_UNDO DEBUG
-#define SHOW_DEBUG 1// Show Debug messages
+#define SHOW_DEBUG true// Show Debug messages
 //Declaration Constants
 #define MAX_ROLLBACK_FRAMES 10 // Specifies the maximum number of frames that can be resimulated
 #define FRAME_ADVANTAGE_LIMIT 6 // Only allow the local client to get so far ahead of remote
@@ -55,11 +55,21 @@ typedef struct PU_SESSION_CALLBACKS{
 typedef enum PU_PLAYER_TYPE{
   PLAYER_HOST = 1,
   PLAYER_CLIENT = 2,
-  PLAYER_SPECTATOR = 3// not implemented yet X*X*
+  PLAYER_SPECTATOR = 3//yet *X*X
 }PU_PLAYER_TYPE;
 
+typedef enum PU_INPUT_STATUS{
+  INPUT_CONFIRMED = 1,
+  INPUT_PREDICTED = 2
+}PU_INPUT_STATUS;
+
+typedef struct PU_GAME_INPUT{
+  uint16_t input; // expecting gameinput to be a 16bit bitfield for now makes it easier to compare for now.
+  PU_INPUT_STATUS input_status;
+}PU_GAME_INPUT;
+
 typedef struct PU_INPUT_STORAGE{
-  uint16_t* input_vector; // expecting gameinput to be a 16bit bitfield for now makes it easier to compare for now.
+  PU_GAME_INPUT* input_vector;
 }PU_INPUT_STORAGE;
 
 typedef struct PU_INPUT_PACKET{
@@ -74,7 +84,7 @@ typedef struct PU_SESSION{
   int remote_frame_advantage;// Latest frame advantage received from the remote client
   //----------------------------------------------------------------------------
   PU_PLAYER_TYPE local_player_type;
-  PU_INPUT_STORAGE player_input[3]; // 0 == local_player, 1 == remote_player, 2 == remote_player_predicted
+  PU_INPUT_STORAGE player_input[3]; // 0 == local_player, 1 == remote_player_confirmed, 2 == remote_player_predicted
   //----------------------------------------------------------------------------
   ENetHost* local_player_host;
   ENetEvent local_client_event;
@@ -82,6 +92,7 @@ typedef struct PU_SESSION{
   //----------------------------------------------------------------------------
   int has_started;
 }PU_SESSION;
+
 // Declaration Funcs
 void pu_disconnect_from_host(PU_SESSION *session, ENetHost* client);
 void pu_destroy_client(ENetHost* client);
@@ -109,15 +120,15 @@ void pu_predict_remote_input(PU_SESSION *session, int frame){
   if (SHOW_DEBUG) {
       printf("SYNC FRAME = %d\n", session->sync_frame);
   }
-  if (session->player_input[1].input_vector[frame-1] == 0 & session->player_input[1].input_vector[frame-2] == 0) {
-    session->player_input[1].input_vector[frame-1] = 0;
-    session->player_input[2].input_vector[frame-1] = 0;
-  }else if (session->player_input[1].input_vector[frame-1] == 0 & session->player_input[1].input_vector[frame-2] != 0) {
-    session->player_input[1].input_vector[frame-1] = session->player_input[1].input_vector[frame-2];
-    session->player_input[2].input_vector[frame-1] = session->player_input[1].input_vector[frame-2];
-  }else{
-    session->player_input[1].input_vector[frame-1] = session->player_input[1].input_vector[session->sync_frame-1];
-    session->player_input[2].input_vector[frame-1] = session->player_input[1].input_vector[session->sync_frame-1];
+  if (session->player_input[1].input_vector[frame-1].input == 0 && session->player_input[1].input_vector[frame-2].input == 0) {
+    PU_GAME_INPUT game_input = {.input = 0, .input_status = INPUT_PREDICTED};
+    session->player_input[1].input_vector[frame-1] = game_input;
+    session->player_input[2].input_vector[frame-1] = game_input;
+
+  }else if (session->player_input[1].input_vector[frame-1].input == 0 && session->player_input[1].input_vector[frame-2].input != 0) {
+    PU_GAME_INPUT game_input = {.input =session->player_input[1].input_vector[frame-2].input, .input_status = INPUT_PREDICTED};
+    session->player_input[1].input_vector[frame-1] = game_input;
+    session->player_input[2].input_vector[frame-1] = game_input;
   }
 };
 // Add Recieved input to input vector
@@ -126,8 +137,9 @@ void pu_add_remote_input(PU_SESSION *session, uint16_t input){
     vector_reserve(session->player_input[1].input_vector, vector_capacity(session->player_input[1].input_vector) + INPUT_RESERVSE_SPACE);
     vector_reserve(session->player_input[2].input_vector, vector_capacity(session->player_input[2].input_vector) + INPUT_RESERVSE_SPACE);
   }
-  session->player_input[1].input_vector[session->remote_frame-1] = input;
-  session->player_input[2].input_vector[session->remote_frame-1] = input;
+  PU_GAME_INPUT game_input = {.input = input, .input_status = INPUT_CONFIRMED};
+  session->player_input[1].input_vector[session->remote_frame-1] = game_input;
+  session->player_input[2].input_vector[session->remote_frame-1] = game_input;
 };
 // Add local input and send it
 void pu_add_local_input(PU_SESSION *session, ENetHost *player, uint16_t input){
@@ -136,14 +148,20 @@ void pu_add_local_input(PU_SESSION *session, ENetHost *player, uint16_t input){
     vector_reserve(session->player_input[1].input_vector, vector_capacity(session->player_input[1].input_vector) + INPUT_RESERVSE_SPACE);
     vector_reserve(session->player_input[2].input_vector, vector_capacity(session->player_input[2].input_vector) + INPUT_RESERVSE_SPACE);
   }
-  session->player_input[0].input_vector[(session->local_frame-1) + LOCAL_FRAME_DELAY] = input;
+
+  if(session->local_frame <= LOCAL_FRAME_DELAY){
+    PU_GAME_INPUT game_input = {.input = 0, .input_status = INPUT_CONFIRMED};
+    session->player_input[0].input_vector[(session->local_frame-1)] = game_input;
+  }
+
+  PU_GAME_INPUT game_input = {.input = input, .input_status = INPUT_CONFIRMED};
+  session->player_input[0].input_vector[(session->local_frame-1) + LOCAL_FRAME_DELAY] = game_input;
 
   if (SHOW_DEBUG) {
     printf("See Input\n");
-    printf("P1-input[%d] = %u\n", session->local_frame, session->player_input[0].input_vector[session->local_frame-1]);
-    printf("P2-input[%d] = %u\n", session->local_frame, session->player_input[1].input_vector[session->local_frame-1]);
+    printf("P1-input[%d] = %u , %d \n", session->local_frame, session->player_input[0].input_vector[session->local_frame-1].input, session->player_input[0].input_vector[session->local_frame-1].input_status);
+    printf("P2-input[%d] = %u , %d \n", session->local_frame, session->player_input[1].input_vector[session->local_frame-1].input, session->player_input[1].input_vector[session->local_frame-1].input_status);
   }
-
   pu_send_input(session, player, input);
 }
 // send player input over the wire with its associated frame number
@@ -161,7 +179,7 @@ void pu_send_input(PU_SESSION *session, ENetHost *player, uint16_t input){
     enet_peer_send(session->host_peer, 0, packet);
   }
 }
-// X*X*
+// Finds the last frame where the inputs were matched
 void pu_determine_sync_frame(PU_SESSION *session){
   int final_frame = session->remote_frame; // We will only check inputs until the remote_frame, since we don't have inputs after.
   int found_frame = INITIAL_FRAME - 1;
@@ -171,12 +189,18 @@ void pu_determine_sync_frame(PU_SESSION *session){
   }
 
   for (int i = session->sync_frame + 1; i <= final_frame; i++) {
-    if (session->player_input[1].input_vector[i-1] != session->player_input[2].input_vector[i-1] ) {
+    if (session->player_input[1].input_vector[i-1].input != session->player_input[2].input_vector[i-1].input) {
+      if(session->player_input[2].input_vector[i-1].input_status == INPUT_PREDICTED){
         pu_log("Found wrong prediction!\n");
         found_frame = i;
         break;
+      }
     }else{
       pu_log("No wrong prediction found!\n");
+      if (session->player_input[2].input_vector[i-1].input_status == INPUT_PREDICTED){
+        session->player_input[2].input_vector[i-1].input_status = INPUT_CONFIRMED;
+        session->player_input[1].input_vector[i-1].input_status = INPUT_CONFIRMED;
+      }
     }
   }
 
@@ -365,9 +389,9 @@ int pu_initialize(PU_SESSION *session){
   session->remote_frame_advantage = 0;
   session->has_started = false;
 
-  session->player_input[0].input_vector = vector_init(uint16_t, INPUT_RESERVSE_SPACE);
-  session->player_input[1].input_vector = vector_init(uint16_t, INPUT_RESERVSE_SPACE);
-  session->player_input[2].input_vector = vector_init(uint16_t, INPUT_RESERVSE_SPACE);
+  session->player_input[0].input_vector = vector_init(PU_GAME_INPUT, INPUT_RESERVSE_SPACE);
+  session->player_input[1].input_vector = vector_init(PU_GAME_INPUT, INPUT_RESERVSE_SPACE);
+  session->player_input[2].input_vector = vector_init(PU_GAME_INPUT, INPUT_RESERVSE_SPACE);
 
   if (enet_initialize() != 0) {
     pu_log("An error occurred while initializing ENet.\n");
