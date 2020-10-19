@@ -80,9 +80,11 @@ int main(void) {
         //use all the inputs since the last sync frame until the current frame to simulate
         for (int i = session.sync_frame + 1; i <= session.local_frame; i++) {
           ///update without rendering
+          //update input to be used in the game
+          pu_predict_remote_input(&session, i);
           //advance gamestate
           cb.advance_game_state(i, &gs, &session.player_input);
-          cb.render_game_state(i, &gs, NULL);
+          //cb.render_game_state(i, &gs, NULL);
           //save gamestate
           cb.save_game_state(i, &gs_vec, &gs);
         }
