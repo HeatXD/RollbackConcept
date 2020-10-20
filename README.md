@@ -14,7 +14,7 @@ I still need to implement a Spectator job in pu_update_network so people can wat
 
 I still need to come up with a proper event system and I need to come up with ways to detect disconnects.
 
-I should create an example game. Coming soonTM.
+I should create an example game. Coming soon.
 
 printf spits out wierd numbers. i should probably make a log to file function.
 
