@@ -20,4 +20,7 @@ https://gist.github.com/rcmagic/f8d76bca32b5609e85ab156db38387e9 and the GGPO di
 
 ## Dependencies
 
-ENET and CVector both included with PleaseUndo in the include folder which are both MIT licensed.
+ENET and C_Vector both included with PleaseUndo in the include folder which are both MIT licensed.
+
+ENET >> https://github.com/zpl-c/enet
+C_Vector >> https://github.com/NickHackman/C_Vector
