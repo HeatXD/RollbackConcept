@@ -14,10 +14,10 @@ Still need to come up with a proper event system and I need to come up with ways
 
 I should create an example game. Coming soonTM.
 
-##Resources
+## Resources
 
 https://gist.github.com/rcmagic/f8d76bca32b5609e85ab156db38387e9 and the GGPO discord.
 
-##Dependencies
+## Dependencies
 
 ENET and CVector both included with PleaseUndo in the include folder which are both MIT licensed.
