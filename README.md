@@ -10,7 +10,7 @@ For now I can connect 1 client to a host.
 
 I still need to implement a Spectator job in pu_update_network so people can watch games.
 
-I still need to come up with a proper event system and I need to come up with ways to detect disconnects
+I still need to come up with a proper event system and I need to come up with ways to detect disconnects.
 
 I should create an example game. Coming soonTM.
 
