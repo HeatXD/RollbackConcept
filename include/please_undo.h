@@ -31,19 +31,18 @@ SOFTWARE.
 #include <stdio.h>
 #include <stdbool.h>
 //PLEASE_UNDO DEBUG
-#define SHOW_DEBUG true// Show Debug messages
+#define SHOW_DEBUG false// Show Debug messages
 //Declaration Constants
 #define MAX_ROLLBACK_FRAMES 10 // Specifies the maximum number of frames that can be resimulated
 #define FRAME_ADVANTAGE_LIMIT 6 // Only allow the local client to get so far ahead of remote
-#define LOCAL_FRAME_DELAY 2 // should never be below 1
+#define LOCAL_FRAME_DELAY 2 // amount of artificial local delay added for smoother gameplay should never be below 1.
 #define INITIAL_FRAME 0 //Specifies the initial frame the game starts in. Cannot rollback before this frame
 #define ENET_CHANNELS 2// ch1 for gameplay and ch2 for text messages
-#define DEFAULT_PORT 9090
-#define ENET_CHANNELS 2
-#define MAX_PEERS 1
-#define INPUT_RESERVSE_SPACE MAX_ROLLBACK_FRAMES*60
-//Declaration Structs and enums
-// this is a prat with will differ per program. the programmer may have to llok to change these callback functions to make it compatible with his use case
+#define DEFAULT_PORT 9090 //Default port used by a PU HOST
+#define MAX_PEERS_CLIENT 1//Amount of clients who can connect to this client. should always be above 0 because he has to connect to a host
+#define MAX_PEERS_HOST 15//Amount of clients who can connect to this host. should always be above 0 otherwise noone can connect
+#define INPUT_RESERVSE_SPACE MAX_ROLLBACK_FRAMES*60 //Input space to reserve when the input vector is close to capacity
+// this is a part with will differ per program. the programmer may have to look to change these callback functions to make it compatible with his use case
 typedef void (*PU_SESSION_CALLBACK)(int frame, void* a, void* b);
 typedef struct PU_SESSION_CALLBACKS{
   PU_SESSION_CALLBACK save_game_state;
@@ -51,32 +50,33 @@ typedef struct PU_SESSION_CALLBACKS{
   PU_SESSION_CALLBACK advance_game_state;
   PU_SESSION_CALLBACK render_game_state;
 }PU_SESSION_CALLBACKS;
-
+// Player tags to specify the right job in the pu_update_network function
 typedef enum PU_PLAYER_TYPE{
   PLAYER_HOST = 1,
   PLAYER_CLIENT = 2,
-  PLAYER_SPECTATOR = 3//yet *X*X
+  PLAYER_SPECTATOR = 3//not implemented yet *X*X
 }PU_PLAYER_TYPE;
-
+// Input tags to specify which type of input is added to the input_vector
 typedef enum PU_INPUT_STATUS{
-  INPUT_CONFIRMED = 1,
-  INPUT_PREDICTED = 2
+  INPUT_UNDEFINED = 1,
+  INPUT_CONFIRMED = 2,
+  INPUT_PREDICTED = 3
 }PU_INPUT_STATUS;
-
+// Game input used in the input vectors
 typedef struct PU_GAME_INPUT{
   uint16_t input; // expecting gameinput to be a 16bit bitfield for now makes it easier to compare for now.
   PU_INPUT_STATUS input_status;
 }PU_GAME_INPUT;
-
+//primary way to store input, used in various functions
 typedef struct PU_INPUT_STORAGE{
   PU_GAME_INPUT* input_vector;
 }PU_INPUT_STORAGE;
-
+// Used to send input over the wire with its associated frame
 typedef struct PU_INPUT_PACKET{
   int frame_num;
   uint16_t input;
 }PU_INPUT_PACKET;
-
+// Main session struct used in almost all major functions contains much needed info for implementing rollback
 typedef struct PU_SESSION{
   int local_frame;// Tracks the latest update frame.
   int remote_frame;// Tracks the latest frame received from the remote client
@@ -94,16 +94,16 @@ typedef struct PU_SESSION{
 }PU_SESSION;
 
 // Declaration Funcs
-void pu_disconnect_from_host(PU_SESSION *session, ENetHost* client);
-void pu_destroy_client(ENetHost* client);
-int pu_connect_to_host(ENetHost* client, PU_SESSION *session, char* ip_address);
-ENetHost* pu_create_client(PU_SESSION *session);
-void pu_update_network(PU_SESSION *session, ENetHost* player);
-ENetHost* pu_create_host(PU_SESSION *session);
-void pu_deinitialize(PU_SESSION *session);
-int pu_initialize(PU_SESSION *session);
-void pu_log(const char* message);
-void pu_destroy_host(ENetHost* host, PU_SESSION *session);
+void pu_disconnect_from_host(PU_SESSION *session, ENetHost* client);// disconnect from enethost
+void pu_destroy_client(ENetHost* client);// cleanup enet client
+int pu_connect_to_host(ENetHost* client, PU_SESSION *session, char* ip_address);// function to connect to a host
+ENetHost* pu_create_client(PU_SESSION *session);// create an Enet+PU client to connect to a host
+void pu_update_network(PU_SESSION *session, ENetHost* player);// updates remote inputs and events
+ENetHost* pu_create_host(PU_SESSION *session); // create an Enet+PU Host if you want people to connect to you
+void pu_deinitialize(PU_SESSION *session);// de-init PU and Enet
+int pu_initialize(PU_SESSION *session);// init PU and Enet functions needed to properly run
+void pu_log(const char* message);//console message function
+void pu_destroy_host(ENetHost* host, PU_SESSION *session);// cleans up ENet and PU host vars
 void pu_send_input(PU_SESSION *session, ENetHost *player, uint16_t input);// send player input over the wire with its associated frame number
 void pu_add_local_input(PU_SESSION *session, ENetHost *player, uint16_t input); //Add local input and send it
 void pu_add_remote_input(PU_SESSION *session, uint16_t input);// Add Recieved input to input vector
@@ -139,7 +139,6 @@ void pu_add_remote_input(PU_SESSION *session, uint16_t input){
   }
   PU_GAME_INPUT game_input = {.input = input, .input_status = INPUT_CONFIRMED};
   session->player_input[1].input_vector[session->remote_frame-1] = game_input;
-  session->player_input[2].input_vector[session->remote_frame-1] = game_input;
 };
 // Add local input and send it
 void pu_add_local_input(PU_SESSION *session, ENetHost *player, uint16_t input){
@@ -150,8 +149,9 @@ void pu_add_local_input(PU_SESSION *session, ENetHost *player, uint16_t input){
   }
 
   if(session->local_frame <= LOCAL_FRAME_DELAY){
-    PU_GAME_INPUT game_input = {.input = 0, .input_status = INPUT_CONFIRMED};
-    session->player_input[0].input_vector[(session->local_frame-1)] = game_input;
+    PU_GAME_INPUT game_input = {.input = 0, .input_status = INPUT_PREDICTED};
+    session->player_input[1].input_vector[(session->local_frame-1)] = game_input;
+    session->player_input[2].input_vector[(session->local_frame-1)] = game_input;
   }
 
   PU_GAME_INPUT game_input = {.input = input, .input_status = INPUT_CONFIRMED};
@@ -159,8 +159,9 @@ void pu_add_local_input(PU_SESSION *session, ENetHost *player, uint16_t input){
 
   if (SHOW_DEBUG) {
     printf("See Input\n");
-    printf("P1-input[%d] = %u , %d \n", session->local_frame, session->player_input[0].input_vector[session->local_frame-1].input, session->player_input[0].input_vector[session->local_frame-1].input_status);
-    printf("P2-input[%d] = %u , %d \n", session->local_frame, session->player_input[1].input_vector[session->local_frame-1].input, session->player_input[1].input_vector[session->local_frame-1].input_status);
+    printf("P1-input[%d] = %u , %i \n", session->local_frame, session->player_input[0].input_vector[session->local_frame-1].input, session->player_input[0].input_vector[session->local_frame-1].input_status);
+    printf("P2-input[%d] = %u , %i \n", session->local_frame, session->player_input[1].input_vector[session->local_frame-1].input, session->player_input[1].input_vector[session->local_frame-1].input_status);
+    printf("P2-input-prediction[%d] = %u , %i \n", session->local_frame, session->player_input[2].input_vector[session->local_frame-1].input, session->player_input[2].input_vector[session->local_frame-1].input_status);
   }
   pu_send_input(session, player, input);
 }
@@ -185,21 +186,24 @@ void pu_determine_sync_frame(PU_SESSION *session){
   int found_frame = INITIAL_FRAME - 1;
 
   if (session->remote_frame > session->local_frame) {
-    final_frame = session->remote_frame;  // Incase the remote client is ahead of local, don't check past the local frame.
+    final_frame = session->local_frame;  // Incase the remote client is ahead of local, don't check past the local frame.
   }
 
   for (int i = session->sync_frame + 1; i <= final_frame; i++) {
     if (session->player_input[1].input_vector[i-1].input != session->player_input[2].input_vector[i-1].input) {
       if(session->player_input[2].input_vector[i-1].input_status == INPUT_PREDICTED){
-        pu_log("Found wrong prediction!\n");
+        if (SHOW_DEBUG) {
+          pu_log("Found wrong prediction!\n");
+          printf("found input: %u  but should be %u at frame: %d\n",session->player_input[2].input_vector[i-1].input, session->player_input[1].input_vector[i-1].input, i);
+        }
         found_frame = i;
         break;
       }
     }else{
       pu_log("No wrong prediction found!\n");
-      if (session->player_input[2].input_vector[i-1].input_status == INPUT_PREDICTED){
-        session->player_input[2].input_vector[i-1].input_status = INPUT_CONFIRMED;
+      if (session->player_input[1].input_vector[i-1].input_status == INPUT_PREDICTED || session->player_input[1].input_vector[i-1].input_status == INPUT_CONFIRMED){
         session->player_input[1].input_vector[i-1].input_status = INPUT_CONFIRMED;
+        session->player_input[2].input_vector[i-1].input_status = INPUT_CONFIRMED;
       }
     }
   }
@@ -342,7 +346,7 @@ int pu_connect_to_host(ENetHost* client, PU_SESSION *session, char* ip_address){
 ENetHost* pu_create_client(PU_SESSION *session){
   ENetHost* client;
   session->local_player_type = PLAYER_CLIENT;
-  client = enet_host_create(NULL, 1, ENET_CHANNELS, 0, 0);
+  client = enet_host_create(NULL, MAX_PEERS_CLIENT, ENET_CHANNELS, 0, 0);
 
   if (client == NULL) {
     pu_log("An error occurred while trying to create an ENet client!\n");
@@ -362,9 +366,10 @@ ENetHost* pu_create_host(PU_SESSION *session){
   ENetEvent event;
   ENetHost* host;
   ENetAddress address = {0};
+
   address.host = ENET_HOST_ANY;
   address.port = DEFAULT_PORT;
-  host = enet_host_create(&address, MAX_PEERS, ENET_CHANNELS, 0, 0);
+  host = enet_host_create(&address, MAX_PEERS_HOST, ENET_CHANNELS, 0, 0);
 
   if (host == NULL) {
     pu_log("An error occurred while trying to create an ENet server host.\n");
