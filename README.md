@@ -14,6 +14,8 @@ Still need to come up with a proper event system and I need to come up with ways
 
 I should create an example game. Coming soonTM.
 
+printf spits out wierd numbers. i should probably make a log to file function.
+
 ## Resources
 
 https://gist.github.com/rcmagic/f8d76bca32b5609e85ab156db38387e9 and the GGPO discord.

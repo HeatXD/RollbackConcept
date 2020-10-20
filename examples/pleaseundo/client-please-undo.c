@@ -38,16 +38,12 @@ void restore_game_state(int frame, GameStateVector* gs_vec, GameState* gs){
 }
 
 void advance_game_state(int frame, GameState* gs, PU_INPUT_STORAGE* inputs){
-//  update input
-  inputs[2].input_vector[frame-1].input = inputs[1].input_vector[frame-1].input;
-//  printf("Advance the Game State Forward one step\n");
   gs->Member1 += 2;
   gs->Member2 = inputs[0].input_vector[frame-1].input;
   gs->Member3 = inputs[1].input_vector[frame-1].input;
 }
 
 void render_game_state(int frame, GameState* gs){
-  //printf("//====================================================//\n");
   //printf("Render Current Game State\n");
   printf("M1 = %d, M2 = %u, M3 = %u\n", gs->Member1, gs->Member2, gs->Member3);
 }
@@ -56,8 +52,8 @@ int main(void) {
   PU_SESSION_CALLBACKS cb;
   PU_SESSION session;
   ENetHost* client;
+
   int dt = 16667;
-  //int dt = 1;
   uint16_t test_input = 90;
 
   cb.restore_game_state = restore_game_state;
@@ -78,9 +74,9 @@ int main(void) {
         cb.restore_game_state(session.sync_frame, &gs_vec, &gs);
         //use all the inputs since the last sync frame until the current frame to simulate
         for (int i = session.sync_frame + 1; i <= session.local_frame; i++) {
-          ///update without rendering
+          //update without rendering and local input since we already have that
           //update input to be used in the game
-          pu_predict_remote_input(&session, i);
+          pu_update_predicted_input(&session.player_input, i);
           //advance gamestate
           cb.advance_game_state(i, &gs, &session.player_input);
           //save gamestate
@@ -90,13 +86,12 @@ int main(void) {
       if (pu_timesynced_condition(&session)){
         //increment local frame
         session.local_frame++;
-        //get local player input
+        //normal update with rendering
         if (test_input > 254) {
           test_input = 0;
         }else{
           test_input++;
         }
-        //normal update with rendering
         //update input to be used in the game
         pu_predict_remote_input(&session, session.local_frame);
         pu_add_local_input(&session, client, test_input);
