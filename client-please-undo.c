@@ -38,7 +38,6 @@ void restore_game_state(int frame, GameStateVector* gs_vec, GameState* gs){
 }
 
 void advance_game_state(int frame, GameState* gs, PU_INPUT_STORAGE* inputs){
-//  printf("//====================================================//\n");
 //  update input
   inputs[2].input_vector[frame-1].input = inputs[1].input_vector[frame-1].input;
 //  printf("Advance the Game State Forward one step\n");
