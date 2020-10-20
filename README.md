@@ -2,7 +2,7 @@
 
 Rollback networking library built on top of Enet written in c99.
 
-You need to link to -lws2_32 and -lwinmm on Windows just like normal Enet;
+You need to link to -lws2_32 and -lwinmm on Windows just like normal Enet.
 I haven't tested this on Linux yet. You're welcome to help me with that!
 
 It's still very WIP lots of things are still missing but it has been a fun covid-project so far.
