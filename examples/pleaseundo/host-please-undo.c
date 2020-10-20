@@ -56,6 +56,7 @@ int main(void) {
   int dt = 16667;
   uint16_t test_input = 113;
 
+  //callbacks are kind of useless right now since you can just call the function. but ive implemented it so lets use it.
   cb.restore_game_state = restore_game_state;
   cb.save_game_state = save_game_state;
   cb.render_game_state = render_game_state;
@@ -87,7 +88,7 @@ int main(void) {
         session.local_frame++;
         //normal update with rendering
         if (test_input > 254) {
-          test_input = 0;
+          test_input = 1;
         }else{
           test_input++;
         }
@@ -103,7 +104,7 @@ int main(void) {
       }
     }
     usleep(dt);
-  } while(true);
+  } while(true);// u shouldnt use while(true) loops but for this example im gonna.
 
   pu_destroy_host(host, &session);
   pu_deinitialize(&session);
