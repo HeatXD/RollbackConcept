@@ -44,8 +44,7 @@ void advance_game_state(int frame, GameState* gs, PU_INPUT_STORAGE* inputs){
 }
 
 void render_game_state(int frame, GameState* gs){
-  //printf("Render Current Game State\n");
-  printf("M1 = %d, M2 = %u, M3 = %u\n", gs->Member1, gs->Member2, gs->Member3);
+  printf("Render Current Game State : M1 = %d, M2 = %u, M3 = %u\n", gs->Member1, gs->Member2, gs->Member3);
 }
 
 int main(void) {

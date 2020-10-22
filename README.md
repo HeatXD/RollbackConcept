@@ -8,8 +8,6 @@ I haven't tested this on Linux yet. You're welcome to help me with that!
 It's still very WIP lots of things are still missing but it has been a fun project so far.
 For now I can connect 1 client to a host.
 
-I need to implement a checksum to verify that the correct data has been recieved.
-
 I still need to implement a Spectator job in pu_update_network so people can watch games.
 
 I still need to come up with a proper event system and I need to come up with ways to detect disconnects.
