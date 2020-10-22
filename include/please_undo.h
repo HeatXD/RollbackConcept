@@ -42,7 +42,10 @@ SOFTWARE.
 #define MAX_PEERS_CLIENT 1//Amount of clients who can connect to this client. should always be above 0 because he has to connect to a host
 #define MAX_PEERS_HOST 15//Amount of clients who can connect to this host. should always be above 0 otherwise noone can connect
 #define INPUT_RESERVSE_SPACE 10*60 //Input space to reserve when the input vector is close to capacity
-
+// Macros
+#define PU_SET_BIT(BF, N) BF |= ((uint16_t) 0x0001 << N)
+#define PU_CLR_BIT(BF, N) BF &= ~((uint16_t) 0x0001 << N)
+#define PU_IS_BIT_SET(BF, N) ((BF >> N) & 0x1)
 // this is a part with will differ per program. the programmer may have to look to change these callback functions to make it compatible with his use case
 typedef void (*PU_SESSION_CALLBACK)(int frame, void* a, void* b);
 typedef struct PU_SESSION_CALLBACKS{
@@ -382,7 +385,7 @@ ENetHost* pu_create_host(PU_SESSION *session){
 
   if (host == NULL) {
     pu_log("AN ERROR OCCURRED WHILE TRYING TO CREATE AN ENET SERVER HOST.\n");
-    return host;
+    return NULL;
   }
   session->local_player_type = PLAYER_HOST;
   session->local_player_host = host;
