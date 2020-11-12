@@ -1,3 +1,4 @@
+//PleaseUndo example
 #define PLEASE_UNDO_IMPL_H
 #include "include/please_undo.h"
 #include "include/cvector.h"
@@ -86,6 +87,7 @@ int main(void) {
         //increment local frame
         session.local_frame++;
         //normal update with rendering
+        //get local input
         if (test_input > 254) {
           test_input = 1;
         }else{

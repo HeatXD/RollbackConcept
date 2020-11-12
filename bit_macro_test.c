@@ -14,7 +14,6 @@ int main(void) {
   printf("%u\n", inputs);
   PU_SET_BIT(inputs, 6);
   printf("%u\n", inputs);
-
   PU_SET_BIT(inputs, 8);
   printf("%u\n", inputs);
   PU_SET_BIT(inputs, 10);

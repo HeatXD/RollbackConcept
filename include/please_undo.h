@@ -34,13 +34,13 @@ SOFTWARE.
 #define SHOW_DEBUG true// Show Debug messages
 //Declaration Constants
 #define MAX_ROLLBACK_FRAMES 10 // Specifies the maximum number of frames that can be resimulated
-#define FRAME_ADVANTAGE_LIMIT 6 // Only allow the local client to get so far ahead of remote
+#define FRAME_ADVANTAGE_LIMIT 6 // Only allow the local clie nt to get so far ahead of remote
 #define LOCAL_FRAME_DELAY 2 // amount of artificial local delay added for smoother gameplay should never be below 1.
 #define INITIAL_FRAME 0 //Specifies the initial frame the game starts in. Cannot rollback before this frame
 #define ENET_CHANNELS 2// ch1 for gameplay and ch2 for text messages
 #define DEFAULT_PORT 9090 //Default port used by an Enet HOST and to connect to an Enet HOST
 #define MAX_PEERS_CLIENT 1//Amount of clients who can connect to this client. should always be above 0 because he has to connect to a host
-#define MAX_PEERS_HOST 15//Amount of clients who can connect to this host. should always be above 0 otherwise noone can connect
+#define MAX_PEERS_HOST 2//Amount of clients who can connect to this host. should always be above 0 otherwise noone can connect
 #define INPUT_RESERVSE_SPACE 10*60 //Input space to reserve when the input vector is close to capacity
 // Macros
 #define PU_SET_BIT(BF, N) BF |= ((uint16_t) 0x0001 << N)
@@ -54,7 +54,6 @@ typedef struct PU_SESSION_CALLBACKS{
   PU_SESSION_CALLBACK advance_game_state;
   PU_SESSION_CALLBACK render_game_state;
 }PU_SESSION_CALLBACKS;
-
 // Player tags to specify the right job in the pu_update_network function
 typedef enum PU_PLAYER_TYPE{
   PLAYER_HOST = 1,
@@ -90,11 +89,11 @@ typedef struct PU_SESSION{
   int remote_frame_advantage;// Latest frame advantage received from the remote client
   //----------------------------------------------------------------------------
   PU_PLAYER_TYPE local_player_type;
-  PU_INPUT_STORAGE player_input[3]; // 0 == local_player, 1 == remote_player_confirmed, 2 == remote_player_predicted
+  PU_INPUT_STORAGE player_input[3]; // 0 == local_player, 1 == remote_player_confirmed, 2 == remote_player_predicted // could prolly be done better if you want to support more than 2 players
   //----------------------------------------------------------------------------
   ENetHost* local_player_host;
   ENetEvent local_client_event;
-  ENetPeer* host_peer;
+  ENetPeer* remote_peer;
   //----------------------------------------------------------------------------
   int has_started;
 }PU_SESSION;
@@ -118,10 +117,14 @@ void pu_determine_sync_frame(PU_SESSION *session);// Finds the last frame where 
 int pu_rollback_condition(PU_SESSION *session); // No need to rollback if we don't have a frame after the previous sync frame to synchronize to
 int pu_timesynced_condition(PU_SESSION *session);// Function for syncing both players making the other wait
 void pu_update_predicted_input(PU_INPUT_STORAGE* inputs, int frame);//update predicted input to confirmed input when corrected in the rollback update
+void pu_start_session(PU_SESSION *session);
 //-----------------------------------------------------------------------------
 // Implementation
 #ifdef PLEASE_UNDO_IMPL_H
 // Please undo functions
+void pu_start_session(PU_SESSION *session){
+  session->has_started = true;
+}
 //update predicted input to confirmed input when corrected in the rollback update
 void pu_update_predicted_input(PU_INPUT_STORAGE* inputs, int frame){
   inputs[2].input_vector[frame-1].input = inputs[1].input_vector[frame-1].input;
@@ -186,11 +189,7 @@ void pu_send_input(PU_SESSION *session, ENetHost *player, const uint16_t input){
 
   ENetPacket* packet = enet_packet_create(&data, sizeof(data), ENET_PACKET_FLAG_RELIABLE);
 
-  if (session->local_player_type == PLAYER_HOST) {
-    enet_host_broadcast(player, 0, packet);
-  }else{
-    enet_peer_send(session->host_peer, 0, packet);
-  }
+  enet_peer_send(session->remote_peer, 0, packet);
 }
 // Finds the last frame where the inputs were matched
 void pu_determine_sync_frame(PU_SESSION *session){
@@ -259,17 +258,18 @@ void pu_update_network(PU_SESSION *session, ENetHost* player){
         switch (event.type) {
           case ENET_EVENT_TYPE_CONNECT:
             if (SHOW_DEBUG) {
-              printf("A NEW CLIENT CONNECTED FROM %s:%u.\n", event.peer->address.host, event.peer->address.port);
+              printf("A NEW CLIENT CONNECTED FROM %s:%u. \n", event.peer->address.host, event.peer->address.port);
             }
             if (!session->has_started) {
               session->has_started = true;
-              event.peer->data = NULL;
+              session->remote_peer = event.peer;
             }
             break;
           case ENET_EVENT_TYPE_DISCONNECT:
             if (SHOW_DEBUG) {
               printf ("%u DISCONNECTED.\n", event.peer->connectID);
             }
+            session->has_started = false;
             event.peer->data = NULL;
             break;
           case ENET_EVENT_TYPE_RECEIVE:
@@ -322,7 +322,7 @@ void pu_destroy_client(ENetHost* client){
 }
 // disconnect client from host
 void pu_disconnect_from_host(PU_SESSION *session, ENetHost* client){
-  enet_peer_disconnect(session->host_peer, 0);
+  enet_peer_disconnect(session->remote_peer, 0);
   while (enet_host_service(client, &session->local_client_event, 3000) > 0) {
     switch (session->local_client_event.type) {
       case ENET_EVENT_TYPE_RECEIVE:
@@ -339,9 +339,9 @@ int pu_connect_to_host(ENetHost* client, PU_SESSION *session, char* ip_address){
   ENetAddress address = {0};
   enet_address_set_host(&address, ip_address);
   address.port = DEFAULT_PORT;
-  session->host_peer = enet_host_connect(client, &address, ENET_CHANNELS, 0);
+  session->remote_peer = enet_host_connect(client, &address, ENET_CHANNELS, 200);
 
-  if (session->host_peer == NULL) {
+  if (session->remote_peer == NULL) {
     pu_log("NO AVAILABLE PEERS FOR INITIATING AN ENET CONNECTION!\n");
     return false;
   }
@@ -349,7 +349,7 @@ int pu_connect_to_host(ENetHost* client, PU_SESSION *session, char* ip_address){
     pu_log("CONNECTION SUCCESSFUL\n");
     return true;
   }else{
-    enet_peer_reset(session->host_peer);
+    enet_peer_reset(session->remote_peer);
     pu_log("CONNECTION FAILED\n");
     return false;
   }
