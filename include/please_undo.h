@@ -33,6 +33,7 @@ SOFTWARE.
 //PLEASE_UNDO DEBUG
 #define SHOW_DEBUG true// Show Debug messages
 //Declaration Constants
+#define MAX_TIMEOUT_TRESHOLD 60*5 //time until a disconnect in frames
 #define MAX_ROLLBACK_FRAMES 10 // Specifies the maximum number of frames that can be resimulated
 #define FRAME_ADVANTAGE_LIMIT 6 // Only allow the local clie nt to get so far ahead of remote
 #define LOCAL_FRAME_DELAY 2 // amount of artificial local delay added for smoother gameplay should never be below 1.
@@ -41,7 +42,7 @@ SOFTWARE.
 #define DEFAULT_PORT 9090 //Default port used by an Enet HOST and to connect to an Enet HOST
 #define MAX_PEERS_CLIENT 1//Amount of clients who can connect to this client. should always be above 0 because he has to connect to a host
 #define MAX_PEERS_HOST 2//Amount of clients who can connect to this host. should always be above 0 otherwise noone can connect
-#define INPUT_RESERVSE_SPACE 10*60 //Input space to reserve when the input vector is close to capacity
+#define INPUT_RESERVSE_SPACE 90 //Input space to reserve when the input vector is close to capacity
 // Macros
 #define PU_SET_BIT(BF, N) BF |= ((uint16_t) 0x0001 << N)
 #define PU_CLR_BIT(BF, N) BF &= ~((uint16_t) 0x0001 << N)
@@ -96,6 +97,7 @@ typedef struct PU_SESSION{
   ENetPeer* remote_peer;
   //----------------------------------------------------------------------------
   int has_started;
+  int remote_timeout_count; //X*X* not inplemented fully yet
 }PU_SESSION;
 
 // Declaration Funcs
@@ -117,11 +119,11 @@ void pu_determine_sync_frame(PU_SESSION *session);// Finds the last frame where 
 int pu_rollback_condition(PU_SESSION *session); // No need to rollback if we don't have a frame after the previous sync frame to synchronize to
 int pu_timesynced_condition(PU_SESSION *session);// Function for syncing both players making the other wait
 void pu_update_predicted_input(PU_INPUT_STORAGE* inputs, int frame);//update predicted input to confirmed input when corrected in the rollback update
-void pu_start_session(PU_SESSION *session);
+void pu_start_session(PU_SESSION *session);// Please undo function to start send input
 //-----------------------------------------------------------------------------
 // Implementation
 #ifdef PLEASE_UNDO_IMPL_H
-// Please undo functions
+// Please undo function to start send input
 void pu_start_session(PU_SESSION *session){
   session->has_started = true;
 }
@@ -140,7 +142,7 @@ void pu_predict_remote_input(PU_SESSION *session, int frame){
     session->player_input[2].input_vector[frame-1] = game_input;
 
   }else if (session->player_input[1].input_vector[frame-1].input == 0 && session->player_input[1].input_vector[frame-2].input != 0) {
-    PU_GAME_INPUT game_input = {.input =session->player_input[1].input_vector[frame-2].input, .input_status = INPUT_PREDICTED};
+    PU_GAME_INPUT game_input = {.input = session->player_input[1].input_vector[frame-2].input, .input_status = INPUT_PREDICTED};
     session->player_input[1].input_vector[frame-1] = game_input;
     session->player_input[2].input_vector[frame-1] = game_input;
   }
@@ -161,7 +163,7 @@ void pu_add_local_input(PU_SESSION *session, ENetHost *player, const uint16_t in
     vector_reserve(session->player_input[1].input_vector, vector_capacity(session->player_input[1].input_vector) + INPUT_RESERVSE_SPACE);
     vector_reserve(session->player_input[2].input_vector, vector_capacity(session->player_input[2].input_vector) + INPUT_RESERVSE_SPACE);
   }
-
+  //adding some predicted inputs for the first few frames at the start of a session when the local players has no input
   if(session->local_frame <= LOCAL_FRAME_DELAY){
     PU_GAME_INPUT game_input = {.input = 0, .input_status = INPUT_PREDICTED};
     session->player_input[1].input_vector[(session->local_frame-1)] = game_input;
@@ -169,6 +171,7 @@ void pu_add_local_input(PU_SESSION *session, ENetHost *player, const uint16_t in
   }
 
   PU_GAME_INPUT game_input = {.input = input, .input_status = INPUT_CONFIRMED};
+  //place the local input at localframe + local_delay
   session->player_input[0].input_vector[(session->local_frame-1) + LOCAL_FRAME_DELAY] = game_input;
 
   if (SHOW_DEBUG) {
@@ -178,6 +181,7 @@ void pu_add_local_input(PU_SESSION *session, ENetHost *player, const uint16_t in
     session->local_frame, session->player_input[1].input_vector[session->local_frame-1].input,
     session->player_input[1].input_vector[session->local_frame-1].input_status);
   }
+  //send input to remote player
   pu_send_input(session, player, input);
 }
 // send player input over the wire with its associated frame number
@@ -232,11 +236,16 @@ int pu_timesynced_condition(PU_SESSION *session){
   // Only allow the local client to get so far ahead of remote
   if (local_frame_advantage < MAX_ROLLBACK_FRAMES && frame_advantage_difference <= FRAME_ADVANTAGE_LIMIT) {
     pu_log("TIME IS SYNCED!\n");
+    session->remote_timeout_count = 0;
     return true;
   }else{
     pu_log("TIME IS NOT SYNCED!\n");
-    return false;
+    session->remote_timeout_count++;
+    if (session->remote_timeout_count > MAX_TIMEOUT_TRESHOLD) {
+      pu_log("SHOULD DISCONNECT!\n");
+    }
   }
+  return false;
 }
 // No need to rollback if we don't have a frame after the previous sync frame to synchronize to
 int pu_rollback_condition(PU_SESSION *session){
@@ -261,7 +270,7 @@ void pu_update_network(PU_SESSION *session, ENetHost* player){
               printf("A NEW CLIENT CONNECTED FROM %s:%u. \n", event.peer->address.host, event.peer->address.port);
             }
             if (!session->has_started) {
-              session->has_started = true;
+              pu_start_session(session);
               session->remote_peer = event.peer;
             }
             break;
@@ -294,7 +303,7 @@ void pu_update_network(PU_SESSION *session, ENetHost* player){
         switch (session->local_client_event.type) {
           case ENET_EVENT_TYPE_RECEIVE:
             if (!session->has_started) {
-              session->has_started = true;
+              pu_start_session(session);
             }
             if (SHOW_DEBUG) {
               printf ("A PACKET OF LENGTH %u WAS RECIEVED FROM %x:%u ON CHANNEL %u.\n",
@@ -339,7 +348,7 @@ int pu_connect_to_host(ENetHost* client, PU_SESSION *session, char* ip_address){
   ENetAddress address = {0};
   enet_address_set_host(&address, ip_address);
   address.port = DEFAULT_PORT;
-  session->remote_peer = enet_host_connect(client, &address, ENET_CHANNELS, 200);
+  session->remote_peer = enet_host_connect(client, &address, ENET_CHANNELS, 0);
 
   if (session->remote_peer == NULL) {
     pu_log("NO AVAILABLE PEERS FOR INITIATING AN ENET CONNECTION!\n");
