@@ -55,7 +55,7 @@ int main(void) {
 
   int dt = 16667;
   uint16_t test_input = 90;
-  //callbacks are kind of useless right now since you can just call the function. but ive implemented it so lets use it.
+
   cb.restore_game_state = restore_game_state;
   cb.save_game_state = save_game_state;
   cb.render_game_state = render_game_state;
@@ -68,21 +68,7 @@ int main(void) {
   do {
     pu_update_network(&session, client);
     if (session.has_started){
-      pu_determine_sync_frame(&session);
-      if (pu_rollback_condition(&session)) {
-        //restore gamestate to sync frame
-        cb.restore_game_state(session.sync_frame, &gs_vec, &gs);
-        //use all the inputs since the last sync frame until the current frame to simulate
-        for (int i = session.sync_frame + 1; i <= session.local_frame; i++) {
-          //update without rendering and local input since we already have that
-          //update input to be used in the game
-          pu_update_predicted_input(&session.player_input, i);
-          //advance gamestate
-          cb.advance_game_state(i, &gs, &session.player_input);
-          //save gamestate
-          cb.save_game_state(i, &gs_vec, &gs);
-        }
-      }
+      pu_process_rollbacks(&session, &cb, &gs, &gs_vec);
       if (pu_timesynced_condition(&session)){
         //increment local frame
         session.local_frame++;
@@ -97,18 +83,16 @@ int main(void) {
         pu_predict_remote_input(&session, session.local_frame);
         pu_add_local_input(&session, client, test_input);
         //advance gamestate
-        cb.advance_game_state(session.local_frame, &gs, &session.player_input);
+        advance_game_state(session.local_frame, &gs, &session.player_input);
         //save gamestate
-        cb.save_game_state(session.local_frame, &gs_vec, &gs);
+        save_game_state(session.local_frame, &gs_vec, &gs);
         //render gamestate
-        cb.render_game_state(session.local_frame, &gs, NULL);
+        render_game_state(session.local_frame, &gs);
       }
     }
     usleep(dt);
-  } while(result == 1);
+  } while(session.local_player_host != NULL);
 
-  pu_disconnect_from_host(&session, client);
-  pu_destroy_client(client);
   pu_deinitialize(&session);
   return 0;
 }

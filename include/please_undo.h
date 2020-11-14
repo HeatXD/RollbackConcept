@@ -33,7 +33,7 @@ SOFTWARE.
 //PLEASE_UNDO DEBUG
 #define SHOW_DEBUG true// Show Debug messages
 //Declaration Constants
-#define MAX_TIMEOUT_TRESHOLD 60*5 //time until a disconnect in frames
+#define MAX_TIMEOUT_TRESHOLD 60 //time until a disconnect in frames
 #define MAX_ROLLBACK_FRAMES 10 // Specifies the maximum number of frames that can be resimulated
 #define FRAME_ADVANTAGE_LIMIT 6 // Only allow the local clie nt to get so far ahead of remote
 #define LOCAL_FRAME_DELAY 2 // amount of artificial local delay added for smoother gameplay should never be below 1.
@@ -69,7 +69,7 @@ typedef enum PU_INPUT_STATUS{
 }PU_INPUT_STATUS;
 // Game input used in the input vectors
 typedef struct PU_GAME_INPUT{
-  uint16_t input; // expecting gameinput to be a 16bit bitfield for now makes it easier to compare for now.
+  uint16_t input; // expecting gameinput to be a 32bit bitfield for now makes it easier to compare for now.
   PU_INPUT_STATUS input_status;
 }PU_GAME_INPUT;
 //primary way to store input, used in various functions
@@ -102,7 +102,7 @@ typedef struct PU_SESSION{
 
 // Declaration Funcs
 void pu_disconnect_from_host(PU_SESSION *session, ENetHost* client);// disconnect from enethost
-void pu_destroy_client(ENetHost* client);// cleanup enet client
+void pu_destroy_client(PU_SESSION *session, ENetHost* client);// cleanup enet client
 int pu_connect_to_host(ENetHost* client, PU_SESSION *session, char* ip_address);// function to connect to a host
 ENetHost* pu_create_client(PU_SESSION *session);// create an Enet+PU client to connect to a host
 void pu_update_network(PU_SESSION *session, ENetHost* player);// updates remote inputs and events
@@ -110,7 +110,7 @@ ENetHost* pu_create_host(PU_SESSION *session); // create an Enet+PU Host if you 
 void pu_deinitialize(PU_SESSION *session);// de-init PU and Enet
 int pu_initialize(PU_SESSION *session);// init PU and Enet functions needed to properly run
 void pu_log(const char* message);//console message function
-void pu_destroy_host(ENetHost* host, PU_SESSION *session);// cleans up ENet and PU host vars
+void pu_destroy_host(PU_SESSION *session, ENetHost* host);// cleans up ENet and PU host vars
 void pu_send_input(PU_SESSION *session, ENetHost *player, const uint16_t input);// send player input over the wire with its associated frame number
 void pu_add_local_input(PU_SESSION *session, ENetHost *player, const uint16_t input); //Add local input and send it
 void pu_add_remote_input(PU_SESSION *session, const uint16_t input);// Add Recieved input to input vector
@@ -120,10 +120,41 @@ int pu_rollback_condition(PU_SESSION *session); // No need to rollback if we don
 int pu_timesynced_condition(PU_SESSION *session);// Function for syncing both players making the other wait
 void pu_update_predicted_input(PU_INPUT_STORAGE* inputs, int frame);//update predicted input to confirmed input when corrected in the rollback update
 void pu_start_session(PU_SESSION *session);// Please undo function to start send input
+void pu_check_disconnect_treshold(PU_SESSION *session);
+void pu_process_rollbacks(PU_SESSION *session, PU_SESSION_CALLBACKS *cb, void* gamestate, void* gamestate_vector);
 //-----------------------------------------------------------------------------
 // Implementation
 #ifdef PLEASE_UNDO_IMPL_H
-// Please undo function to start send input
+void pu_process_rollbacks(PU_SESSION *session, PU_SESSION_CALLBACKS *cb, void* gamestate, void* gamestate_vector){
+  pu_determine_sync_frame(session);
+  if (pu_rollback_condition(session)){
+    //restore gamestate to sync frame
+    cb->restore_game_state(session->sync_frame, gamestate_vector, gamestate);
+    //use all the inputs since the last sync frame until the current frame to simulate
+    for (int i = session->sync_frame + 1; i <= session->local_frame; i++) {
+      ///update without rendering and local input since we already have that
+      //update input to be used in the games
+      pu_update_predicted_input(session->player_input, i);
+      //advance gamestate
+      cb->advance_game_state(i, gamestate, session->player_input);
+      //save gamestate
+      cb->save_game_state(i, gamestate_vector, gamestate);
+    }
+  }
+}
+// Check for how long the remote client isnt synced if its above the treshold we will disconnect
+void pu_check_disconnect_treshold(PU_SESSION *session){
+  if (session->remote_timeout_count > MAX_TIMEOUT_TRESHOLD) {
+    pu_log("SHOULD DISCONNECT!\n");
+    if (session->local_player_type == PLAYER_HOST) {
+      pu_destroy_host(session, session->local_player_host);
+    }else if (session->local_player_type == PLAYER_CLIENT) {
+      pu_disconnect_from_host(session, session->local_player_host);
+      pu_destroy_client(session, session->local_player_host);
+    }
+  }
+}
+// Please undo function to start the session
 void pu_start_session(PU_SESSION *session){
   session->has_started = true;
 }
@@ -236,14 +267,14 @@ int pu_timesynced_condition(PU_SESSION *session){
   // Only allow the local client to get so far ahead of remote
   if (local_frame_advantage < MAX_ROLLBACK_FRAMES && frame_advantage_difference <= FRAME_ADVANTAGE_LIMIT) {
     pu_log("TIME IS SYNCED!\n");
-    session->remote_timeout_count = 0;
+    if (session->remote_timeout_count != 0) {
+      session->remote_timeout_count = 0;
+    }
     return true;
   }else{
     pu_log("TIME IS NOT SYNCED!\n");
     session->remote_timeout_count++;
-    if (session->remote_timeout_count > MAX_TIMEOUT_TRESHOLD) {
-      pu_log("SHOULD DISCONNECT!\n");
-    }
+    pu_check_disconnect_treshold(session);
   }
   return false;
 }
@@ -278,7 +309,6 @@ void pu_update_network(PU_SESSION *session, ENetHost* player){
             if (SHOW_DEBUG) {
               printf ("%u DISCONNECTED.\n", event.peer->connectID);
             }
-            session->has_started = false;
             event.peer->data = NULL;
             break;
           case ENET_EVENT_TYPE_RECEIVE:
@@ -325,7 +355,8 @@ void pu_update_network(PU_SESSION *session, ENetHost* player){
   session->remote_frame_advantage = (session->local_frame - session->remote_frame);
 }
 //cleanup enethost client
-void pu_destroy_client(ENetHost* client){
+void pu_destroy_client(PU_SESSION *session, ENetHost* client){
+  session->local_player_host = NULL;
   enet_host_destroy(client);
   pu_log("CLIENT DESTROYED!\n");
 }
@@ -373,11 +404,12 @@ ENetHost* pu_create_client(PU_SESSION *session){
     pu_log("AN ERROR OCCURRED WHILE TRYING TO CREATE AN ENET CLIENT!\n");
     return client;
   }
+  session->local_player_host = client;
   pu_log("CLIENT CREATED!\n");
   return client;
 }
 // cleanup enethost host
-void pu_destroy_host(ENetHost* host, PU_SESSION *session){
+void pu_destroy_host(PU_SESSION *session, ENetHost* host){
   session->local_player_host = NULL;
   enet_host_destroy(host);
   pu_log("HOST DESTROYED!\n");
@@ -401,10 +433,10 @@ ENetHost* pu_create_host(PU_SESSION *session){
   pu_log("ENET HOST CREATED!\n");
   return host;
 }
-// simple logging function
+// simple console logging function
 void pu_log(const char* message){
   if (SHOW_DEBUG) {
-    fprintf(stderr, message);
+    printf(message);
   }
 }
 // initialize Please undo session and ENet
