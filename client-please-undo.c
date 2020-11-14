@@ -58,7 +58,6 @@ int main(void) {
 
   cb.restore_game_state = restore_game_state;
   cb.save_game_state = save_game_state;
-  cb.render_game_state = render_game_state;
   cb.advance_game_state = advance_game_state;
 
   pu_initialize(&session);
