@@ -120,11 +120,12 @@ int pu_rollback_condition(PU_SESSION *session); // No need to rollback if we don
 int pu_timesynced_condition(PU_SESSION *session);// Function for syncing both players making the other wait
 void pu_update_predicted_input(PU_INPUT_STORAGE* inputs, int frame);//update predicted input to confirmed input when corrected in the rollback update
 void pu_start_session(PU_SESSION *session);// Please undo function to start send input
-void pu_check_disconnect_treshold(PU_SESSION *session);
-void pu_process_rollbacks(PU_SESSION *session, PU_SESSION_CALLBACKS *cb, void* gamestate, void* gamestate_vector);
+void pu_check_disconnect_treshold(PU_SESSION *session);// function to check wheter to disconnect or not
+void pu_process_rollbacks(PU_SESSION *session, PU_SESSION_CALLBACKS *cb, void* gamestate, void* gamestate_vector); // internal rollback squence
 //-----------------------------------------------------------------------------
 // Implementation
 #ifdef PLEASE_UNDO_IMPL_H
+// Internal rollback squence
 void pu_process_rollbacks(PU_SESSION *session, PU_SESSION_CALLBACKS *cb, void* gamestate, void* gamestate_vector){
   pu_determine_sync_frame(session);
   if (pu_rollback_condition(session)){
