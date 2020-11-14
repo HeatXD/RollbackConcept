@@ -52,7 +52,7 @@ typedef void (*PU_SESSION_CALLBACK)(int frame, void* a, void* b);
 typedef struct PU_SESSION_CALLBACKS{
   PU_SESSION_CALLBACK save_game_state;
   PU_SESSION_CALLBACK advance_game_state;
-  PU_SESSION_CALLBACK render_game_state;
+  PU_SESSION_CALLBACK restore_game_state;
 }PU_SESSION_CALLBACKS;
 // Player tags to specify the right job in the pu_update_network function
 typedef enum PU_PLAYER_TYPE{
