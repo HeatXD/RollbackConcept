@@ -90,7 +90,7 @@ int main(void) {
       }
     }
     usleep(dt);
-  } while(session.local_player_host != NULL);
+  } while(result == 1);
 
   pu_deinitialize(&session);
   return 0;

@@ -416,7 +416,6 @@ void pu_destroy_host(PU_SESSION *session, ENetHost* host){
 }
 // create host
 ENetHost* pu_create_host(PU_SESSION *session){
-  ENetEvent event;
   ENetHost* host;
   ENetAddress address = {0};
 
