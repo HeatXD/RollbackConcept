@@ -1,4 +1,5 @@
 //PleaseUndo example
+#define ENET_IMPLEMENTATION
 #define PLEASE_UNDO_IMPL_H
 #include "include/please_undo.h"
 #include "include/cvector.h"

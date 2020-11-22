@@ -25,7 +25,6 @@ SOFTWARE.
 //-----------------------------------------------------------------------------
 #ifndef PLEASE_UNDO_H
 #define PLEASE_UNDO_H
-#define ENET_IMPLEMENTATION
 #include "enet.h"
 #include "cvector.h"
 #include <stdio.h>
@@ -33,9 +32,9 @@ SOFTWARE.
 //PLEASE_UNDO DEBUG
 #define SHOW_DEBUG true// Show Debug messages
 //Declaration Constants
-#define MAX_TIMEOUT_TRESHOLD 60 //time until a disconnect in frames
+#define MAX_TIMEOUT_TRESHOLD 60*10 //time until a disconnect in frames
 #define MAX_ROLLBACK_FRAMES 10 // Specifies the maximum number of frames that can be resimulated
-#define FRAME_ADVANTAGE_LIMIT 6 // Only allow the local clie nt to get so far ahead of remote
+#define FRAME_ADVANTAGE_LIMIT 6 // Only allow the local client to get so far ahead of remote
 #define LOCAL_FRAME_DELAY 2 // amount of artificial local delay added for smoother gameplay should never be below 1.
 #define INITIAL_FRAME 0 //Specifies the initial frame the game starts in. Cannot rollback before this frame
 #define ENET_CHANNELS 2// ch1 for gameplay and ch2 for text messages
