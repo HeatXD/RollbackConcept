@@ -1,3 +1,4 @@
+Currently not maintained to to lack f time. will come back to it when time is plenty again.
 # PleaseUndo
 
 Rollback networking library built on top of Enet written in c99.
